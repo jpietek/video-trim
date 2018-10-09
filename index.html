@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<title>Demo</title>
+<meta name="description" content="" />
+<meta name="viewport" content="width=device-width" />
+<base href="/" />
+<link rel="stylesheet" type="text/css"
+	href="/webjars/bootstrap/css/bootstrap.min.css" />
+<script type="text/javascript" src="/webjars/jquery/jquery.min.js"></script>
+<script type="text/javascript"
+	src="/webjars/bootstrap/js/bootstrap.min.js"></script>
+
+<script type="text/javascript" src="/webjars/angularjs/angular.min.js"></script>
+<script type="text/javascript">
+	var app = angular.module("app", []);
+
+	app.controller("home", function($http) {
+		var self = this;
+		$http.get("/user").success(function(data) {
+			self.user = data.userAuthentication.details.name;
+			self.authenticated = true;
+		}).error(function() {
+			self.user = "N/A";
+			self.authenticated = false;
+		});
+
+		self.logout = function() {
+			$http.post('/logout', {}).success(function() {
+				self.authenticated = false;
+				$location.path("/");
+			}).error(function(data) {
+				console.log("Logout failed")
+				self.authenticated = false;
+			});
+		};
+
+		self.list = function() {
+			$http.post('/list', {}).success(function(files) {
+				document.getElementById('fileList').innerHTML = JSON.stringify(files);
+				files.forEach(file => {
+					console.log(file.name);
+					console.log(file.width);
+				});
+			}).error(function(data) {
+				console.log("List failed")
+			});
+		};
+	});
+</script>
+</head>
+<body ng-app="app" ng-controller="home as home">
+	<h1>Demo</h1>
+	<div class="container" ng-show="!home.authenticated">
+		Login with: <a href="/login/google">Google</a>
+	</div>
+	<div class="container" ng-show="home.authenticated">
+		Logged in as: <span ng-bind="home.user"></span>
+	</div>
+	<div>
+		<button ng-click="home.logout()" class="btn btn-primary">Logout</button>
+	</div>
+	<div>
+		<button ng-click="home.list()" class="btn btn-primary">List</button>
+	</div>
+	<div id="fileList"></div>
+</body>
+</html>
