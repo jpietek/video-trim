@@ -1,0 +1,8 @@
+#!/bin/bash
+curl -s -c cookies -D /tmp/head $1 > /tmp/i.html
+url="https://drive.google.com$(cat /tmp/i.html | grep -Po 'uc-download-link" [^>]* href="\K[^"]*' | sed 's/\&amp;/\&/g')"
+c1=`grep Set-Cookie /tmp/head|grep NID|head -1| cut -d' ' -f2|cut -d ';' -f1`
+c2=`grep Set-Cookie /tmp/head|grep download_warning|cut -d ' ' -f2`
+c="Cookie: $c2$c1"
+eff=`curl "$url" -Ls -H "$c" -I -o /dev/null -w %{url_effective}`
+echo $eff

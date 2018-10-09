@@ -1,0 +1,7 @@
+#!/bin/bash
+curl -s -c cookies -D head $i > /tmp/i.html
+url="https://drive.google.com$(cat /tmp/i.html | grep -Po 'uc-download-link" [^>]* href="\K[^"]*' | sed 's/\&amp;/\&/g')"
+c1=`grep Set-Cookie head|grep NID|head -1| cut -d' ' -f2|cut -d ';' -f1`
+c2=`grep Set-Cookie head|grep download_warning|cut -d ' ' -f2`
+c="Cookie: $c2$c1"
+curl -Ls -H "$c" $url |ffmpeg -y -i pipe:0 -codec copy -ss $3 -t $4 -f $2

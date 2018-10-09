@@ -1,0 +1,14 @@
+HTTP/1.1 403 Forbidden
+X-GUploader-UploadID: AEnB2Uo6_gxRPJf48CGghRiTJ9bqYDnvMChT0orCwPhq5py_-SfOseNvSarfy3LEM_VYInPwi1Q1kfmjvUBF_TtX9YWT7sjYVA
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Credentials: false
+Access-Control-Allow-Headers: Accept, Accept-Language, Authorization, Cache-Control, Content-Disposition, Content-Encoding, Content-Language, Content-Length, Content-MD5, Content-Range, Content-Type, Date, GData-Version, google-cloud-resource-prefix, Host, If-Match, If-Modified-Since, If-None-Match, If-Unmodified-Since, Origin, OriginToken, Pragma, Range, Slug, Transfer-Encoding, Want-Digest, x-chrome-connected, X-ClientDetails, X-GData-Client, X-GData-Key, X-Goog-Api-Client, X-Goog-AuthUser, X-Goog-PageId, X-Goog-Encode-Response-If-Executable, X-Goog-Correlation-Id, X-Goog-Request-Info, X-Goog-Experiments, x-goog-iam-authority-selector, x-goog-iam-authorization-token, X-Goog-Spatula, X-Goog-Upload-Command, X-Goog-Upload-Content-Disposition, X-Goog-Upload-Content-Length, X-Goog-Upload-Content-Type, X-Goog-Upload-File-Name, X-Goog-Upload-Offset, X-Goog-Upload-Protocol, X-Goog-Visitor-Id, X-HTTP-Method-Override, X-JavaScript-User-Agent, X-Pan-Versionid, X-Proxied-User-IP, X-Origin, X-Referer, X-Requested-With, X-Upload-Content-Length, X-Upload-Content-Type, X-Use-HTTP-Status-Code-Override, X-Ios-Bundle-Identifier, X-Android-Package, X-Ariane-Xsrf-Token, X-YouTube-VVT, X-YouTube-Page-CL, X-YouTube-Page-Timestamp, X-Goog-Meeting-Botguardid, X-Goog-Meeting-Debugid, X-Goog-Meeting-Token, X-Client-Data, X-Sfdc-Authorization
+Access-Control-Allow-Methods: GET,OPTIONS
+Date: Sun, 09 Jul 2017 21:59:08 GMT
+Expires: Sun, 09 Jul 2017 21:59:08 GMT
+Cache-Control: private, max-age=0
+Content-Length: 0
+Server: UploadServer
+Content-Type: text/html; charset=UTF-8
+Alt-Svc: quic=":443"; ma=2592000; v="39,38,37,36,35"
+
