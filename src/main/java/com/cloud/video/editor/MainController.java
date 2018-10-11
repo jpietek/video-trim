@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.security.Principal;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -127,7 +128,7 @@ public class MainController extends WebSecurityConfigurerAdapter {
 		}
 		return principal;
 	}
-	
+
 	@RequestMapping(value = "/user/compilations/list/mail", method = RequestMethod.POST)
 	public List<Compilation> getUserCompilations(@RequestBody CompilationsRequest req) {
 		System.out.println("user mail: " + req.getMail());
@@ -172,7 +173,7 @@ public class MainController extends WebSecurityConfigurerAdapter {
 		final Set<Video> videos = compilationReq.getVideos();
 		final Compilation c = new Compilation();
 		videos.stream().forEach(v -> v.setCompilation(c));
-		
+
 		c.setUser(user);
 		c.setVideos(compilationReq.getVideos());
 		c.setDuration(compilationReq.getTotalDuration());
@@ -191,7 +192,7 @@ public class MainController extends WebSecurityConfigurerAdapter {
 		if (!saveRes.isSuccess()) {
 			return saveRes;
 		}
-		
+
 		String basepath = "/var/www/html/out/" + StringUtils.getRandomId();
 
 		try {
@@ -224,12 +225,27 @@ public class MainController extends WebSecurityConfigurerAdapter {
 
 			List<Double> cutInIframeTs = (List<Double>) inRes.getResult();
 			List<Double> cutOutIframeTs = (List<Double>) outRes.getResult();
+			Set<Double> keyframes = new HashSet<Double>();
+			keyframes.addAll(cutInIframeTs);
+			keyframes.addAll(cutOutIframeTs);
+			
+			if (keyframes.size() < 2) {
+				return new Result(false, "failed to extract at least 2 keyframes");
+			}
+			
+			if(keyframes.size() == 2) {
+				System.out.println("only 2 keyframes found, reencode the whole segment");
+				return Mp4Utils.reencodeSingleSegment(url, in, out, basepath + "/" + c.getSortId() + ".mp4");
+			}
 
 			String middlePath = basepath + "/chunks/" + c.getSortId() + "-middle.mp4";
-			CompletableFuture<Result> middleFuture = CompletableFuture.supplyAsync(() -> {
-				return Mp4Utils.extractKeyFramedSegment(cutInIframeTs.get(1), cutOutIframeTs.get(0), url, middlePath,
-						c.getFps());
-			});
+			CompletableFuture<Result> middleFuture = null;
+			if (keyframes.size() == 4) {
+				middleFuture = CompletableFuture.supplyAsync(() -> {
+					return Mp4Utils.extractKeyFramedSegment(cutInIframeTs.get(1), cutOutIframeTs.get(0), url,
+							middlePath, c.getFps());
+				});
+			}
 
 			if (!inRes.isSuccess() || !outRes.isSuccess()) {
 				System.out.println("extracting iframed tses failed: " + inRes.getMsg() + " " + outRes.getMsg());
@@ -288,7 +304,7 @@ public class MainController extends WebSecurityConfigurerAdapter {
 
 			chunksToConcat.add(leftTrimmedPath);
 
-			if (!cutInIframeTs.get(1).equals(cutOutIframeTs.get(0))) {
+			if (!cutInIframeTs.get(1).equals(cutOutIframeTs.get(0)) && keyframes.size() == 4) {
 				Result middleChunkRes = middleFuture.join();
 				if (!middleChunkRes.isSuccess()) {
 					System.out.println("reencode middle trim failed: " + middleChunkRes);

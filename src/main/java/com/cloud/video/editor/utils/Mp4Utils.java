@@ -3,6 +3,7 @@ package com.cloud.video.editor.utils;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -44,13 +45,12 @@ public class Mp4Utils {
 	}
 
 	public static Result getIFramesNearTimecode(double timeSeconds, String videoPath) {
-		double left = Math.max(1, timeSeconds - 10);
+		double left = timeSeconds - 10;
 		double right = timeSeconds + 10;
 
 		String cmd = "ffprobe -loglevel panic -show_frames -select_streams v "
 				+ "-show_entries frame=pkt_dts_time,pict_type -print_format csv -read_intervals " 
-				+ left + "%" + right
-				+ " -i " + videoPath;
+				+ left + "%" + right + " -i " + videoPath;
 
 		List<String> keyFrameStrings = SysUtils.getResultStream(cmd).filter(line -> line.contains(",I"))
 				.collect(Collectors.toList());
@@ -68,12 +68,12 @@ public class Mp4Utils {
 				System.out.println("parsed val: " + val);
 				double delta = val - timeSeconds;
 				System.out.println("delta: " + delta);
-				if (delta < 0) {
+				if (delta <= 0) {
 					if (Math.abs(delta) < leftDelta) {
 						leftDelta = Math.abs(delta);
 						leftVal = val;
 					}
-				} else if (delta >= 0) {
+				} else if (delta > 0) {
 					if (Math.abs(delta) < rightDelta) {
 					    rightDelta = Math.abs(delta);
 						rightVal = val;
@@ -85,7 +85,7 @@ public class Mp4Utils {
 		}
 
 		if (rightVal == null || leftVal == null) {
-			return new Result(false, "can't find 2 keyframes round time: " + timeSeconds);
+			return new Result(false, "can't find 2 keyframes round time: " + timeSeconds + " " + rightVal +  " " + leftVal);
 		}
 
 		System.out.println("found keyframes: " + leftVal + " " + rightVal);
@@ -115,6 +115,21 @@ public class Mp4Utils {
 		System.out.println("trim res: " + trimResult);
 		return new Result(true, "trim with reencode ok");
 	}
+	
+	public static Result reencodeSingleSegment(String inputPath, double in, double out, String outputPath) {
+		String cmd = "ffmpeg -y -loglevel panic -i " + inputPath + " -ss " + in + " -to " + out + " -vcodec libx264 " + outputPath;
+		
+		boolean trimResult = SysUtils.getExitCode(cmd);
+
+		if (!trimResult) {
+			return new Result(false, "trimming video chunk failed, " + inputPath + " " + in + " " + out);
+		}
+
+		String url = outputPath.replace("/var/www/html", "");
+		Video gf = new Video();
+		gf.setDirectContentLink(url);
+		return new Result(true, "file concat ok", gf);
+	}
 
 	public static Result extractKeyFramedSegment(double in, double out, String inputPath, String outputPath,
 			double fps) {
@@ -132,6 +147,8 @@ public class Mp4Utils {
 			return new Result(false, "extracting keyframed video chunk failed, " + inputPath + " " + in + " " + out);
 		}
 		System.out.println("trim res: " + trimResult);
+		
+		
 		return new Result(true, "keyframed segment extraction ok");
 	}
 
