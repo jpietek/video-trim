@@ -17,6 +17,7 @@ import java.util.stream.IntStream;
 import javax.servlet.Filter;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.security.oauth2.resource.ResourceServerProperties;
@@ -223,11 +224,13 @@ public class MainController extends WebSecurityConfigurerAdapter {
 				return new Result(false, "extracting iframed tses failed: " + inRes.getMsg() + " " + outRes.getMsg());
 			}
 
-			List<Double> cutInIframeTs = (List<Double>) inRes.getResult();
-			List<Double> cutOutIframeTs = (List<Double>) outRes.getResult();
+			Pair<Double, Double> cutInIframeTs = (Pair<Double, Double>) inRes.getResult();
+			Pair<Double, Double> cutOutIframeTs = (Pair<Double, Double>) outRes.getResult();
 			Set<Double> keyframes = new HashSet<Double>();
-			keyframes.addAll(cutInIframeTs);
-			keyframes.addAll(cutOutIframeTs);
+			keyframes.add(cutInIframeTs.getLeft());
+			keyframes.add(cutInIframeTs.getRight());
+			keyframes.add(cutOutIframeTs.getLeft());
+			keyframes.add(cutOutIframeTs.getRight());
 			
 			if (keyframes.size() < 2) {
 				return new Result(false, "failed to extract at least 2 keyframes");
@@ -242,7 +245,7 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			CompletableFuture<Result> middleFuture = null;
 			if (keyframes.size() == 4) {
 				middleFuture = CompletableFuture.supplyAsync(() -> {
-					return Mp4Utils.extractKeyFramedSegment(cutInIframeTs.get(1), cutOutIframeTs.get(0), url,
+					return Mp4Utils.extractKeyFramedSegment(cutInIframeTs.getRight(), cutOutIframeTs.getLeft(), url,
 							middlePath, c.getFps());
 				});
 			}
@@ -255,7 +258,7 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			System.out.println(cutInIframeTs + " " + in);
 			System.out.println(cutOutIframeTs + " " + out);
 			if (cutInIframeTs.equals(cutOutIframeTs)) {
-				Result trimRes = Mp4Utils.trimReencodeSegment(cutInIframeTs.get(0), cutInIframeTs.get(1), url,
+				Result trimRes = Mp4Utils.trimReencodeSegment(cutInIframeTs.getLeft(), cutInIframeTs.getRight(), url,
 						c.getFps(), "left", basepath + "/chunks/" + c.getSortId() + ".mp4");
 				return trimRes;
 			}
@@ -269,11 +272,11 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			}
 
 			CompletableFuture<Result> extractLeftResFuture = CompletableFuture.supplyAsync(() -> {
-				return Mp4Utils.extractKeyFramedSegment(cutInIframeTs.get(0), cutInIframeTs.get(1), url, leftPath,
+				return Mp4Utils.extractKeyFramedSegment(cutInIframeTs.getLeft(), cutInIframeTs.getRight(), url, leftPath,
 						c.getFps());
 			});
 			CompletableFuture<Result> extractRightResFuture = CompletableFuture.supplyAsync(() -> {
-				return Mp4Utils.extractKeyFramedSegment(cutOutIframeTs.get(0), cutOutIframeTs.get(1), url, rightPath,
+				return Mp4Utils.extractKeyFramedSegment(cutOutIframeTs.getLeft(), cutOutIframeTs.getRight(), url, rightPath,
 						c.getFps());
 			});
 
@@ -287,11 +290,11 @@ public class MainController extends WebSecurityConfigurerAdapter {
 
 			final String leftTrimmedPath = leftPath.replace("-full", "");
 			final String rightTrimmedPath = rightPath.replace("-full", "");
-			double trimLeftIn = in - cutInIframeTs.get(0);
+			double trimLeftIn = in - cutInIframeTs.getLeft();
 			double trimRightIn = 0;
-			double segmentDuration = cutInIframeTs.get(1) - cutInIframeTs.get(0);
+			double segmentDuration = cutInIframeTs.getRight() - cutInIframeTs.getLeft();
 			double leftDuration = segmentDuration - trimLeftIn;
-			double rightDuration = out - cutOutIframeTs.get(0);
+			double rightDuration = out - cutOutIframeTs.getLeft();
 			Result leftTrimRes = Mp4Utils.trimReencodeSegment(trimLeftIn, leftDuration, leftPath, c.getFps(), "left",
 					leftTrimmedPath);
 			Result rightTrimRes = Mp4Utils.trimReencodeSegment(trimRightIn, rightDuration, rightPath, c.getFps(),
@@ -304,7 +307,7 @@ public class MainController extends WebSecurityConfigurerAdapter {
 
 			chunksToConcat.add(leftTrimmedPath);
 
-			if (!cutInIframeTs.get(1).equals(cutOutIframeTs.get(0)) && keyframes.size() == 4) {
+			if (!cutInIframeTs.getRight().equals(cutOutIframeTs.getLeft()) && keyframes.size() == 4) {
 				Result middleChunkRes = middleFuture.join();
 				if (!middleChunkRes.isSuccess()) {
 					System.out.println("reencode middle trim failed: " + middleChunkRes);
