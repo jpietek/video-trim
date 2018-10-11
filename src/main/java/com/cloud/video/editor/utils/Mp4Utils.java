@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.tuple.Pair;
 
 import com.cloud.video.editor.model.Video;
 import com.cloud.video.editor.model.Result;
@@ -89,7 +90,7 @@ public class Mp4Utils {
 		}
 
 		System.out.println("found keyframes: " + leftVal + " " + rightVal);
-		return new Result(true, "keyframes found", Arrays.asList(leftVal, rightVal));
+		return new Result(true, "keyframes found", Pair.of(leftVal, rightVal));
 	}
 
 	public static Result trimReencodeSegment(double in, double duration, String inputPath, double fps, String offsetSide,
