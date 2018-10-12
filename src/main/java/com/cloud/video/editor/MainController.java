@@ -51,7 +51,9 @@ import com.cloud.video.editor.model.Result;
 import com.cloud.video.editor.model.User;
 import com.cloud.video.editor.model.UserRepository;
 import com.cloud.video.editor.model.Video;
+import com.cloud.video.editor.model.probe.Probe;
 import com.cloud.video.editor.utils.Mp4Utils;
+import com.cloud.video.editor.utils.ProbeUtils;
 import com.cloud.video.editor.utils.StringUtils;
 
 @SpringBootApplication
@@ -208,12 +210,16 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			final double in = c.cutInSeconds();
 			final double out = c.cutOutSeconds();
 
-			ArrayList<String> chunksToConcat = new ArrayList<String>();
+			List<String> chunksToConcat = new ArrayList<>();
 			CompletableFuture<Result> inResFuture = CompletableFuture.supplyAsync(() -> {
 				return Mp4Utils.getIFramesNearTimecodeFast(in, url);
 			});
 			CompletableFuture<Result> outResFuture = CompletableFuture.supplyAsync(() -> {
 				return Mp4Utils.getIFramesNearTimecodeFast(out, url);
+			});
+			
+			CompletableFuture<Result> probeResFuture = CompletableFuture.supplyAsync(() -> {
+				return ProbeUtils.probeVideo(url);
 			});
 
 			Result inRes = inResFuture.join();
@@ -232,16 +238,23 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			keyframes.add(cutOutIframeTs.getLeft());
 			keyframes.add(cutOutIframeTs.getRight());
 			
+			Result probeRes = probeResFuture.join();
+			if(!probeRes.isSuccess()) {
+				return new Result(false, "cant ffprobe video");
+			}
+			
+			Probe ffprobeParams = (Probe) probeRes.getResult();
+			
 			if (keyframes.size() < 2) {
 				return new Result(false, "failed to extract at least 2 keyframes");
 			}
 			
 			if(keyframes.size() == 2) {
 				System.out.println("only 2 keyframes found, reencode the whole segment");
-				return Mp4Utils.reencodeSingleSegment(url, in, out, basepath + "/" + c.getSortId() + ".mp4");
+				return Mp4Utils.reencodeSingleSegment(url, in, out, basepath + "/" + c.getSortId() + ".mkv");
 			}
 
-			String middlePath = basepath + "/chunks/" + c.getSortId() + "-middle.mp4";
+			String middlePath = basepath + "/chunks/" + c.getSortId() + "-middle.mkv";
 			CompletableFuture<Result> middleFuture = null;
 			if (keyframes.size() == 4) {
 				middleFuture = CompletableFuture.supplyAsync(() -> {
@@ -259,12 +272,12 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			System.out.println(cutOutIframeTs + " " + out);
 			if (cutInIframeTs.equals(cutOutIframeTs)) {
 				Result trimRes = Mp4Utils.trimReencodeSegment(cutInIframeTs.getLeft(), cutInIframeTs.getRight(), url,
-						c.getFps(), "left", basepath + "/chunks/" + c.getSortId() + ".mp4");
+						c.getFps(), "left", basepath + "/chunks/" + c.getSortId() + ".mkv", ffprobeParams);
 				return trimRes;
 			}
 
-			final String leftPath = basepath + "/chunks/" + c.getSortId() + "-left-full.mp4";
-			final String rightPath = basepath + "/chunks/" + c.getSortId() + "-right-full.mp4";
+			final String leftPath = basepath + "/chunks/" + c.getSortId() + "-left-full.mkv";
+			final String rightPath = basepath + "/chunks/" + c.getSortId() + "-right-full.mkv";
 			try {
 				FileUtils.forceMkdir(new File(basepath + "/chunks/"));
 			} catch (IOException e) {
@@ -296,9 +309,9 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			double leftDuration = segmentDuration - trimLeftIn;
 			double rightDuration = out - cutOutIframeTs.getLeft();
 			Result leftTrimRes = Mp4Utils.trimReencodeSegment(trimLeftIn, leftDuration, leftPath, c.getFps(), "left",
-					leftTrimmedPath);
+					leftTrimmedPath, ffprobeParams);
 			Result rightTrimRes = Mp4Utils.trimReencodeSegment(trimRightIn, rightDuration, rightPath, c.getFps(),
-					"right", rightTrimmedPath);
+					"right", rightTrimmedPath, ffprobeParams);
 
 			if (!leftTrimRes.isSuccess() || !rightTrimRes.isSuccess()) {
 				System.out.println("reencode trim failed: " + leftTrimRes + " " + rightTrimRes);
@@ -316,7 +329,7 @@ public class MainController extends WebSecurityConfigurerAdapter {
 				chunksToConcat.add(middlePath);
 			}
 			chunksToConcat.add(rightTrimmedPath);
-			return Mp4Utils.fileConcat(chunksToConcat, basepath + "/" + c.getSortId() + ".mp4");
+			return Mp4Utils.fileConcat(chunksToConcat, basepath + "/" + c.getSortId() + ".mkv");
 		}).collect(Collectors.toList());
 
 		Optional<Result> failed = clipRenderResults.stream().filter(res -> !res.isSuccess()).findFirst();
@@ -325,11 +338,14 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			return new Result(false, "one of the clip renders failed, " + failed.get().getMsg());
 		}
 
-		List<String> chunkPaths = IntStream.range(0, clips.size()).mapToObj(n -> basepath + "/" + n + ".mp4")
+		List<String> chunkPaths = IntStream.range(0, clips.size()).mapToObj(n -> basepath + "/" + n + ".mkv")
 				.collect(Collectors.toList());
 
 		System.out.println("chunk paths: " + chunkPaths);
-		return Mp4Utils.fileConcat(chunkPaths, basepath + "/out.mp4");
+		String mkvOut = basepath + "/out.mkv";
+		String mp4Out = basepath + "/out.mp4";
+		Mp4Utils.fileConcat(chunkPaths, mkvOut);
+		return Mp4Utils.remuxMkvToMp4(mkvOut, mp4Out);
 	}
 
 	@Override
