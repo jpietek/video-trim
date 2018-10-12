@@ -210,10 +210,10 @@ public class MainController extends WebSecurityConfigurerAdapter {
 
 			ArrayList<String> chunksToConcat = new ArrayList<String>();
 			CompletableFuture<Result> inResFuture = CompletableFuture.supplyAsync(() -> {
-				return Mp4Utils.getIFramesNearTimecode(in, url);
+				return Mp4Utils.getIFramesNearTimecodeFast(in, url);
 			});
 			CompletableFuture<Result> outResFuture = CompletableFuture.supplyAsync(() -> {
-				return Mp4Utils.getIFramesNearTimecode(out, url);
+				return Mp4Utils.getIFramesNearTimecodeFast(out, url);
 			});
 
 			Result inRes = inResFuture.join();
