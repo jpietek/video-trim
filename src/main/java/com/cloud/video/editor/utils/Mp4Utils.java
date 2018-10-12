@@ -132,56 +132,6 @@ public class Mp4Utils {
 		return closest;
 	}
 
-	public static Result getIFramesNearTimecode(double timeSeconds, String videoPath) {
-		double left = timeSeconds - 10;
-		double right = timeSeconds + 10;
-
-		String cmd = "ffprobe -loglevel panic -show_frames -select_streams v "
-				+ "-show_entries frame=pkt_dts_time,pict_type -print_format csv -read_intervals " + left + "%" + right
-				+ " -i " + videoPath;
-
-		List<String> keyFrameStrings = SysUtils.getResultStream(cmd).filter(line -> line.contains(",I"))
-				.collect(Collectors.toList());
-
-		if (keyFrameStrings.size() < 2) {
-			return new Result(false, "didn't find at least two keyframes in surrounding 10s");
-		}
-
-		double leftDelta = Double.MAX_VALUE;
-		Double leftVal = null;
-		Double rightVal = null;
-		double rightDelta = Double.MAX_VALUE;
-		for (String keyFrameString : keyFrameStrings) {
-			try {
-				double val = Double.parseDouble(keyFrameString.split(",")[1]);
-				System.out.println("parsed val: " + val);
-				double delta = val - timeSeconds;
-				System.out.println("delta: " + delta);
-				if (delta <= 0) {
-					if (Math.abs(delta) < leftDelta) {
-						leftDelta = Math.abs(delta);
-						leftVal = val;
-					}
-				} else if (delta > 0) {
-					if (Math.abs(delta) < rightDelta) {
-						rightDelta = Math.abs(delta);
-						rightVal = val;
-					}
-				}
-			} catch (NumberFormatException e) {
-				continue;
-			}
-		}
-
-		if (rightVal == null || leftVal == null) {
-			return new Result(false,
-					"can't find 2 keyframes round time: " + timeSeconds + " " + rightVal + " " + leftVal);
-		}
-
-		System.out.println("found keyframes: " + leftVal + " " + rightVal);
-		return new Result(true, "keyframes found", Pair.of(leftVal, rightVal));
-	}
-
 	public static Result trimReencodeSegment(double in, double duration, String inputPath, double fps,
 			String offsetSide, String outputPath) {
 
