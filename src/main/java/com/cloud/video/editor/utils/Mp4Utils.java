@@ -168,7 +168,7 @@ public class Mp4Utils {
 				.collect(Collectors.toList());
 	}
 
-	public static double getClosestKeyFrame(List<String> keyframes, double seekPoint, KeyframeSide side) {
+	public static Double getClosestKeyFrame(List<String> keyframes, double seekPoint, KeyframeSide side) {
 		double minDelta = Double.MAX_VALUE;
 		Double closest = null;
 		for (String keyFrameString : keyframes) {
