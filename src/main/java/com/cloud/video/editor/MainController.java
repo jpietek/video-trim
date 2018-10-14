@@ -11,6 +11,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -18,6 +20,7 @@ import javax.servlet.Filter;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.tuple.Pair;
+import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.security.oauth2.resource.ResourceServerProperties;
@@ -74,6 +77,8 @@ public class MainController extends WebSecurityConfigurerAdapter {
 
 	private DropboxLogic dropboxLogic = new DropboxLogic(
 			"S00tGBw3cCkAAAAAAAAM6N6UvdHcsqGjkfI1jYGpeUS_ngU9XdFssa70QgK71aqw");
+	
+	private Executor videoExecutor = Executors.newFixedThreadPool(128);
 
 	@Bean
 	public FilterRegistrationBean oauth2ClientFilterRegistration(OAuth2ClientContextFilter filter) {
@@ -203,6 +208,8 @@ public class MainController extends WebSecurityConfigurerAdapter {
 		} catch (IOException e) {
 			return new Result(false, "can't create tmp dir for redering");
 		}
+		Video firstVideo = compilationReq.getVideos().iterator().next();
+		System.out.println("seek point: " + firstVideo.cutInSeconds() + " " +  firstVideo.cutOutSeconds());
 
 		final Set<Video> clips = compilationReq.getVideos();
 		List<Result> clipRenderResults = clips.parallelStream().map(c -> {
@@ -213,14 +220,14 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			List<String> chunksToConcat = new ArrayList<>();
 			CompletableFuture<Result> inResFuture = CompletableFuture.supplyAsync(() -> {
 				return Mp4Utils.getIFramesNearTimecodeFast(in, url);
-			});
+			}, videoExecutor);
 			CompletableFuture<Result> outResFuture = CompletableFuture.supplyAsync(() -> {
 				return Mp4Utils.getIFramesNearTimecodeFast(out, url);
-			});
+			}, videoExecutor);
 			
 			CompletableFuture<Result> probeResFuture = CompletableFuture.supplyAsync(() -> {
 				return ProbeUtils.probeVideo(url);
-			});
+			}, videoExecutor);
 
 			Result inRes = inResFuture.join();
 			Result outRes = outResFuture.join();
@@ -237,6 +244,11 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			keyframes.add(cutInIframeTs.getRight());
 			keyframes.add(cutOutIframeTs.getLeft());
 			keyframes.add(cutOutIframeTs.getRight());
+			
+			double leftGopLength = cutInIframeTs.getRight() - cutInIframeTs.getLeft();
+			double rightGopLength = cutOutIframeTs.getRight() - cutOutIframeTs.getLeft();
+			double leftOffset = 0.07 * leftGopLength;
+			double rightOffset = 0.07 * rightGopLength;
 			
 			Result probeRes = probeResFuture.join();
 			if(!probeRes.isSuccess()) {
@@ -259,8 +271,8 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			if (keyframes.size() == 4) {
 				middleFuture = CompletableFuture.supplyAsync(() -> {
 					return Mp4Utils.extractKeyFramedSegment(cutInIframeTs.getRight(), cutOutIframeTs.getLeft(), url,
-							middlePath, c.getFps());
-				});
+							middlePath, c.getFps(), leftOffset);
+				}, videoExecutor);
 			}
 
 			if (!inRes.isSuccess() || !outRes.isSuccess()) {
@@ -286,12 +298,12 @@ public class MainController extends WebSecurityConfigurerAdapter {
 
 			CompletableFuture<Result> extractLeftResFuture = CompletableFuture.supplyAsync(() -> {
 				return Mp4Utils.extractKeyFramedSegment(cutInIframeTs.getLeft(), cutInIframeTs.getRight(), url, leftPath,
-						c.getFps());
-			});
+						c.getFps(), leftOffset);
+			}, videoExecutor);
 			CompletableFuture<Result> extractRightResFuture = CompletableFuture.supplyAsync(() -> {
 				return Mp4Utils.extractKeyFramedSegment(cutOutIframeTs.getLeft(), cutOutIframeTs.getRight(), url, rightPath,
-						c.getFps());
-			});
+						c.getFps(), rightOffset);
+			}, videoExecutor);
 
 			Result extractLeftRes = extractLeftResFuture.join();
 			Result extractRightRes = extractRightResFuture.join();
@@ -343,8 +355,10 @@ public class MainController extends WebSecurityConfigurerAdapter {
 
 		System.out.println("chunk paths: " + chunkPaths);
 		String mkvOut = basepath + "/out.mkv";
-		String mp4Out = basepath + "/out.mp4";
 		return Mp4Utils.fileConcat(chunkPaths, mkvOut);
+		
+		//String mp4Out = basepath + "/out.mp4";
+		//return Mp4Utils.remuxMkvToMp4(mkvOut, mp4Out);
 	}
 
 	@Override

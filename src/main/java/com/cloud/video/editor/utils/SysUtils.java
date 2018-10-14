@@ -9,7 +9,7 @@ import java.util.stream.Stream;
 public class SysUtils {
 
 	public static Stream<String> getResultStream(String  cmd) {
-		System.out.print("exec cmd: " + cmd);
+		System.out.println("exec cmd: " + cmd);
 		try {
 			ProcessBuilder pb = new ProcessBuilder(cmd.split(" "));
 			pb.inheritIO();
@@ -26,7 +26,7 @@ public class SysUtils {
 	}
 
 	public static boolean getExitCode(String cmd) {
-		System.out.print("exec cmd: " + cmd);
+		System.out.println("exec cmd: " + cmd);
 		ProcessBuilder pb = new ProcessBuilder(cmd.split(" "));
 		try {
 			Process p = pb.start();
