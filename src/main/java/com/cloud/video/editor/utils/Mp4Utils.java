@@ -220,14 +220,14 @@ public class Mp4Utils {
 	public static Result trimReencodeSegment(double in, double duration, String inputPath, double fps,
 			String offsetSide, String outputPath, Probe ffprobeParams) {
 
-		/*if (offsetSide.equalsIgnoreCase("left")) {
+		if (offsetSide.equalsIgnoreCase("left")) {
 			duration -= ((1 / fps) * 1.5);
 			in += 0.05;
 
 		} else if (offsetSide.equalsIgnoreCase("right")) {
 			in += ((1 / fps) * 1.5);
 			duration += 0.05;
-		}*/
+		}
 
 		Stream video = ffprobeParams.getStreams().get(0);
 		Stream audio = ffprobeParams.getStreams().get(1);

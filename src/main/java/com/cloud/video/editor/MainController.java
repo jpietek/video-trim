@@ -320,6 +320,7 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			double segmentDuration = cutInIframeTs.getRight() - cutInIframeTs.getLeft();
 			double leftDuration = segmentDuration - trimLeftIn;
 			double rightDuration = out - cutOutIframeTs.getLeft();
+			
 			Result leftTrimRes = Mp4Utils.trimReencodeSegment(trimLeftIn, leftDuration, leftPath, c.getFps(), "left",
 					leftTrimmedPath, ffprobeParams);
 			Result rightTrimRes = Mp4Utils.trimReencodeSegment(trimRightIn, rightDuration, rightPath, c.getFps(),
@@ -341,7 +342,7 @@ public class MainController extends WebSecurityConfigurerAdapter {
 				chunksToConcat.add(middlePath);
 			}
 			chunksToConcat.add(rightTrimmedPath);
-			return Mp4Utils.concatProtocol(chunksToConcat, basepath + "/" + c.getSortId() + ".mkv");
+			return Mp4Utils.concatProtocol(chunksToConcat, basepath + "/" + c.getSortId() + ".mp4");
 		}).collect(Collectors.toList());
 
 		Optional<Result> failed = clipRenderResults.stream().filter(res -> !res.isSuccess()).findFirst();
@@ -354,7 +355,7 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			return clipRenderResults.get(0);
 		}
 
-		List<String> chunkPaths = IntStream.range(0, clips.size()).mapToObj(n -> basepath + "/" + n + ".mkv")
+		List<String> chunkPaths = IntStream.range(0, clips.size()).mapToObj(n -> basepath + "/" + n + ".mp4")
 				.collect(Collectors.toList());
 
 		System.out.println("chunk paths: " + chunkPaths);
