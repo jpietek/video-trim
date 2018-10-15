@@ -1,2 +1,8 @@
 #!/bin/bash
-ffmpeg -y -loglevel panic -i "concat:$1|$2|$3" -c copy -shortest -fflags +genpts -avoid_negative_ts make_zero $4
+if [ "$#" -eq 4 ]; then
+   ffmpeg -y -loglevel panic -i "concat:$1|$2|$3" -c copy -fflags +genpts -avoid_negative_ts make_zero $4
+elif [ "$#" -eq 3 ]; then
+   ffmpeg -y -loglevel panic -i "concat:$1|$2" -c copy -fflags +genpts -avoid_negative_ts make_zero $3
+else
+   exit 1
+fi
