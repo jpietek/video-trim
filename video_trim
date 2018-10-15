@@ -1,0 +1,2 @@
+#!/bin/bash
+ffmpeg -y -loglevel panic -i "concat:$1|$2|$3" -c copy -shortest -fflags +genpts -avoid_negative_ts make_zero $4

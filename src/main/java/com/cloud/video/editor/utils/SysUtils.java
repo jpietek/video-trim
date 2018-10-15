@@ -38,4 +38,15 @@ public class SysUtils {
 			return false;
 		}
 	}
+	
+	public static boolean getRuntimeExitCode(String cmd) {
+		System.out.println("exec cmd: " + cmd);
+		try {
+			Process p =  Runtime.getRuntime().exec(cmd);
+			p.waitFor();
+			return p.exitValue() > 0 ? false : true;
+		} catch (IOException | InterruptedException e) {
+			return false;
+		}
+	}
 }
