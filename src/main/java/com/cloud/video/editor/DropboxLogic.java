@@ -127,7 +127,7 @@ public class DropboxLogic {
 					.withIncludeMediaInfo(true).withRecursive(false).start();
 			List<Metadata> folderContents = result.getEntries();
 
-			List<CompletableFuture> thumbFutures = new ArrayList<CompletableFuture>();
+			List<CompletableFuture> thumbFutures = new ArrayList<>();
 
 			folderContents.stream().forEach(file -> {
 				if (file instanceof FileMetadata) {
