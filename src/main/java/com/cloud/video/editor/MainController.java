@@ -359,8 +359,8 @@ public class MainController extends WebSecurityConfigurerAdapter {
 				.collect(Collectors.toList());
 
 		System.out.println("chunk paths: " + chunkPaths);
-		String mkvOut = basepath + "/out.ts";
-		return Mp4Utils.fileConcat(chunkPaths, mkvOut);
+		String mp4Out = basepath + "/out.mp4";
+		return Mp4Utils.fileConcat(chunkPaths, mp4Out);
 	}
 
 	@Override
