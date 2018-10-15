@@ -88,20 +88,23 @@ public class Mp4Utils {
 
 	public static Result concatProtocol(List<String> inputFiles, String outputFilename) {
 		StringBuffer cmd = new StringBuffer();
-		cmd.append("ffmpeg -y -loglevel panic -i 'concat:");
+		cmd.append("/vt/video_trim ");
 		
 		for(String input: inputFiles) {
-			cmd.append(input + "|");
+			cmd.append(input + " ");
 		}
 		
-		cmd.append("' -c copy -shortest -fflags +genpts -avoid_negative_ts make_zero " + outputFilename);
+		cmd.append(outputFilename);
 		
-		boolean concatResult = SysUtils.getExitCode(cmd.toString());
+		boolean concatResult = SysUtils.getRuntimeExitCode(cmd.toString());
 		if (!concatResult) {
-			return new Result(false, "concat ffmpeg command failed");
+			return new Result(false, "concat protocol ffmpeg command failed");
 		}
 		
-		return new Result(true, "concat protocol ok");
+		String url = outputFilename.replace("/var/www/html", "");
+		Video gf = new Video();
+		gf.setDirectContentLink(url);
+		return new Result(true, "concat protocol ok", gf);
 	}
 	
 	public static Result fileConcat(List<String> inputFiles, String outputFilename) {

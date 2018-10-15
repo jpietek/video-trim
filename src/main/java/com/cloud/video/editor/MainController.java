@@ -266,7 +266,7 @@ public class MainController extends WebSecurityConfigurerAdapter {
 				return Mp4Utils.reencodeSingleSegment(url, in, out, basepath + "/" + c.getSortId() + ".mkv");
 			}
 
-			String middlePath = basepath + "/chunks/" + c.getSortId() + "-middle.mkv";
+			String middlePath = basepath + "/chunks/" + c.getSortId() + "-middle.ts";
 			CompletableFuture<Result> middleFuture = null;
 			if (keyframes.size() == 4) {
 				middleFuture = CompletableFuture.supplyAsync(() -> {
@@ -288,8 +288,8 @@ public class MainController extends WebSecurityConfigurerAdapter {
 				return trimRes;
 			}
 
-			final String leftPath = basepath + "/chunks/" + c.getSortId() + "-left-full.mkv";
-			final String rightPath = basepath + "/chunks/" + c.getSortId() + "-right-full.mkv";
+			final String leftPath = basepath + "/chunks/" + c.getSortId() + "-left-full.ts";
+			final String rightPath = basepath + "/chunks/" + c.getSortId() + "-right-full.ts";
 			try {
 				FileUtils.forceMkdir(new File(basepath + "/chunks/"));
 			} catch (IOException e) {
@@ -341,7 +341,7 @@ public class MainController extends WebSecurityConfigurerAdapter {
 				chunksToConcat.add(middlePath);
 			}
 			chunksToConcat.add(rightTrimmedPath);
-			return Mp4Utils.fileConcat(chunksToConcat, basepath + "/" + c.getSortId() + ".mkv");
+			return Mp4Utils.concatProtocol(chunksToConcat, basepath + "/" + c.getSortId() + ".mkv");
 		}).collect(Collectors.toList());
 
 		Optional<Result> failed = clipRenderResults.stream().filter(res -> !res.isSuccess()).findFirst();
@@ -349,16 +349,17 @@ public class MainController extends WebSecurityConfigurerAdapter {
 		if (failed.isPresent()) {
 			return new Result(false, "one of the clip renders failed, " + failed.get().getMsg());
 		}
+		
+		if(clips.size() == 1) {
+			return clipRenderResults.get(0);
+		}
 
 		List<String> chunkPaths = IntStream.range(0, clips.size()).mapToObj(n -> basepath + "/" + n + ".mkv")
 				.collect(Collectors.toList());
 
 		System.out.println("chunk paths: " + chunkPaths);
-		String mkvOut = basepath + "/out.mkv";
+		String mkvOut = basepath + "/out.ts";
 		return Mp4Utils.fileConcat(chunkPaths, mkvOut);
-		
-		//String mp4Out = basepath + "/out.mp4";
-		//return Mp4Utils.remuxMkvToMp4(mkvOut, mp4Out);
 	}
 
 	@Override
