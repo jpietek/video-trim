@@ -138,10 +138,12 @@ public class Mp4Utils {
 
 	public static Result getIFramesNearTimecodeFast(double seekPoint, String videoPath) {
 		CompletableFuture<Double> leftKeyframeFuture = CompletableFuture.supplyAsync(() -> {
-			for (int i = 0; i < 10; i++) {
+			double left = seekPoint;
+			double right = seekPoint;
+			for (int i = 1; i <= 8; i++) {
 				System.out.println("left keyframe iter: " + i);
-				double left = seekPoint - 2 * (i + 1);
-				double right = seekPoint - 2 * i;
+				right = left;
+				left -= Math.pow(2, i);
 				List<String> keyframes = getKeyframes(left, right, videoPath);
 				if (keyframes.isEmpty()) {
 					continue;
@@ -156,10 +158,12 @@ public class Mp4Utils {
 		}, mp4UtilsExecutor);
 
 		CompletableFuture<Double> rightKeyframeFuture = CompletableFuture.supplyAsync(() -> {
-			for (int i = 0; i < 10; i++) {
+			double left = seekPoint;
+			double right = seekPoint;
+			for (int i = 1; i <= 8; i++) {
 				System.out.println("right keyframe iter: " + i);
-				double left = seekPoint + 2 * i;
-				double right = seekPoint + 2 * (i + 1);
+				left = right;
+				right += Math.pow(2, i);
 				List<String> keyframes = getKeyframes(left, right, videoPath);
 				if (keyframes.isEmpty()) {
 					continue;
