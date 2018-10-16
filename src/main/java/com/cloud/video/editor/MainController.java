@@ -50,6 +50,7 @@ import com.cloud.video.editor.model.Compilation;
 import com.cloud.video.editor.model.CompilationRepository;
 import com.cloud.video.editor.model.CompilationRequest;
 import com.cloud.video.editor.model.CompilationsRequest;
+import com.cloud.video.editor.model.KeyframeSide;
 import com.cloud.video.editor.model.Result;
 import com.cloud.video.editor.model.User;
 import com.cloud.video.editor.model.UserRepository;
@@ -77,7 +78,7 @@ public class MainController extends WebSecurityConfigurerAdapter {
 
 	private DropboxLogic dropboxLogic = new DropboxLogic(
 			"S00tGBw3cCkAAAAAAAAM6N6UvdHcsqGjkfI1jYGpeUS_ngU9XdFssa70QgK71aqw");
-	
+
 	private Executor videoExecutor = Executors.newFixedThreadPool(128);
 
 	@Bean
@@ -164,7 +165,10 @@ public class MainController extends WebSecurityConfigurerAdapter {
 
 	@RequestMapping(value = "/dropbox/getDirectLink", method = RequestMethod.POST)
 	public Video getDropboxUrl(@RequestBody Video v) {
-		dropboxLogic.getDirectLink(v);
+		Result updatedVideoRes = dropboxLogic.getDirectLink(v);
+		if (!updatedVideoRes.isSuccess()) {
+			System.out.println(updatedVideoRes.getResult());
+		}
 		return v;
 	}
 
@@ -209,7 +213,7 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			return new Result(false, "can't create tmp dir for redering");
 		}
 		Video firstVideo = compilationReq.getVideos().iterator().next();
-		System.out.println("seek point: " + firstVideo.cutInSeconds() + " " +  firstVideo.cutOutSeconds());
+		System.out.println("seek point: " + firstVideo.cutInSeconds() + " " + firstVideo.cutOutSeconds());
 
 		final Set<Video> clips = compilationReq.getVideos();
 		List<Result> clipRenderResults = clips.parallelStream().map(c -> {
@@ -223,10 +227,6 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			}, videoExecutor);
 			CompletableFuture<Result> outResFuture = CompletableFuture.supplyAsync(() -> {
 				return Mp4Utils.getIFramesNearTimecodeFast(out, url);
-			}, videoExecutor);
-			
-			CompletableFuture<Result> probeResFuture = CompletableFuture.supplyAsync(() -> {
-				return ProbeUtils.probeVideo(url);
 			}, videoExecutor);
 
 			Result inRes = inResFuture.join();
@@ -244,24 +244,17 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			keyframes.add(cutInIframeTs.getRight());
 			keyframes.add(cutOutIframeTs.getLeft());
 			keyframes.add(cutOutIframeTs.getRight());
-			
+
 			double leftGopLength = cutInIframeTs.getRight() - cutInIframeTs.getLeft();
 			double rightGopLength = cutOutIframeTs.getRight() - cutOutIframeTs.getLeft();
 			double leftOffset = 0.07 * leftGopLength;
 			double rightOffset = 0.07 * rightGopLength;
-			
-			Result probeRes = probeResFuture.join();
-			if(!probeRes.isSuccess()) {
-				return new Result(false, "cant ffprobe video");
-			}
-			
-			Probe ffprobeParams = (Probe) probeRes.getResult();
-			
+
 			if (keyframes.size() < 2) {
 				return new Result(false, "failed to extract at least 2 keyframes");
 			}
-			
-			if(keyframes.size() == 2) {
+
+			if (keyframes.size() == 2) {
 				System.out.println("only 2 keyframes found, reencode the whole segment");
 				return Mp4Utils.reencodeSingleSegment(url, in, out, basepath + "/" + c.getSortId() + ".mkv");
 			}
@@ -280,11 +273,11 @@ public class MainController extends WebSecurityConfigurerAdapter {
 				return new Result(false, "extracting iframed tses failed: " + inRes.getMsg() + " " + outRes.getMsg());
 			}
 
-			System.out.println(cutInIframeTs + " " + in);
-			System.out.println(cutOutIframeTs + " " + out);
+			System.out.println(cutInIframeTs + " " + in + " " + cutOutIframeTs + " " + out);
 			if (cutInIframeTs.equals(cutOutIframeTs)) {
-				Result trimRes = Mp4Utils.trimReencodeSegment(cutInIframeTs.getLeft(), cutInIframeTs.getRight(), url,
-						c.getFps(), "left", basepath + "/chunks/" + c.getSortId() + ".mkv", ffprobeParams);
+				String output = basepath + "/chunks/" + c.getSortId() + ".mp4";
+				Result trimRes = Mp4Utils.trimReencodeSegment(c, cutInIframeTs.getLeft(), cutInIframeTs.getRight(),
+						c.getDirectContentLink(), output, KeyframeSide.FULLCHUNK);
 				return trimRes;
 			}
 
@@ -297,12 +290,12 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			}
 
 			CompletableFuture<Result> extractLeftResFuture = CompletableFuture.supplyAsync(() -> {
-				return Mp4Utils.extractKeyFramedSegment(cutInIframeTs.getLeft(), cutInIframeTs.getRight(), url, leftPath,
-						c.getFps(), leftOffset);
+				return Mp4Utils.extractKeyFramedSegment(cutInIframeTs.getLeft(), cutInIframeTs.getRight(), url,
+						leftPath, c.getFps(), leftOffset);
 			}, videoExecutor);
 			CompletableFuture<Result> extractRightResFuture = CompletableFuture.supplyAsync(() -> {
-				return Mp4Utils.extractKeyFramedSegment(cutOutIframeTs.getLeft(), cutOutIframeTs.getRight(), url, rightPath,
-						c.getFps(), rightOffset);
+				return Mp4Utils.extractKeyFramedSegment(cutOutIframeTs.getLeft(), cutOutIframeTs.getRight(), url,
+						rightPath, c.getFps(), rightOffset);
 			}, videoExecutor);
 
 			Result extractLeftRes = extractLeftResFuture.join();
@@ -320,11 +313,11 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			double segmentDuration = cutInIframeTs.getRight() - cutInIframeTs.getLeft();
 			double leftDuration = segmentDuration - trimLeftIn;
 			double rightDuration = out - cutOutIframeTs.getLeft();
-			
-			Result leftTrimRes = Mp4Utils.trimReencodeSegment(trimLeftIn, leftDuration, leftPath, c.getFps(), "left",
-					leftTrimmedPath, ffprobeParams);
-			Result rightTrimRes = Mp4Utils.trimReencodeSegment(trimRightIn, rightDuration, rightPath, c.getFps(),
-					"right", rightTrimmedPath, ffprobeParams);
+
+			Result leftTrimRes = Mp4Utils.trimReencodeSegment(c, trimLeftIn, leftDuration, leftPath, leftTrimmedPath,
+					KeyframeSide.LEFT);
+			Result rightTrimRes = Mp4Utils.trimReencodeSegment(c, trimRightIn, rightDuration, rightPath,
+					rightTrimmedPath, KeyframeSide.RIGHT);
 
 			if (!leftTrimRes.isSuccess() || !rightTrimRes.isSuccess()) {
 				System.out.println("reencode trim failed: " + leftTrimRes + " " + rightTrimRes);
@@ -350,8 +343,8 @@ public class MainController extends WebSecurityConfigurerAdapter {
 		if (failed.isPresent()) {
 			return new Result(false, "one of the clip renders failed, " + failed.get().getMsg());
 		}
-		
-		if(clips.size() == 1) {
+
+		if (clips.size() == 1) {
 			return clipRenderResults.get(0);
 		}
 
