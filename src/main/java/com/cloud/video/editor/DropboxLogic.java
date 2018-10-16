@@ -44,7 +44,7 @@ public class DropboxLogic {
 		client = new DbxClientV2(config, accessToken);
 	}
 
-	public void getDirectLink(Video vf) {
+	public Result getDirectLink(Video vf) {
 		GetTemporaryLinkResult res;
 		try {
 			res = client.files().getTemporaryLink(vf.getPath());
@@ -52,29 +52,50 @@ public class DropboxLogic {
 			vf.setDirectContentLink(path);
 			Result probeRes = ProbeUtils.probeVideo(path);
 			if (!probeRes.isSuccess()) {
-				return;
+				new Result(false, "ffprobe for given video failed");
 			}
 
 			Probe p = (Probe) probeRes.getResult();
 			Optional<Stream> videoStreamOpt = p.getStreams().stream()
 					.filter(s -> s.getCodec_type().equalsIgnoreCase("video")).findFirst();
 			if (!videoStreamOpt.isPresent()) {
-				return;
+				new Result(false, "no video present in given file");
 			}
+			
+			Optional<Stream> audioStreamOpt = p.getStreams().stream()
+					.filter(s -> s.getCodec_type().equalsIgnoreCase("video")).findFirst();
+			if (!audioStreamOpt.isPresent()) {
+				new Result(false, "no audio present in given file");
+			}
+			
+			Stream audio = audioStreamOpt.get();
+			vf.setAudioCodecName(audio.getCodec_name());
+			vf.setAudioBitrate(256000);
+			
 			Stream video = videoStreamOpt.get();
 			String fpsString = video.getAvg_frame_rate();
-			if (fpsString != null) {
-				int fpsNum = Integer.parseInt(fpsString.split("\\/")[0]);
-				int fpsDenum = Integer.parseInt(fpsString.split("\\/")[1]);
-				double fps = Double.valueOf(1.0 * fpsNum / fpsDenum);
-				System.out.println("fps: " + fps);
-				vf.setFps(fps);
+
+			if (fpsString == null) {
+				return new Result(false, "can't determing video fps");
 			}
 
+			int fpsNum = Integer.parseInt(fpsString.split("\\/")[0]);
+			int fpsDenum = Integer.parseInt(fpsString.split("\\/")[1]);
+			double fps = Double.valueOf(1.0 * fpsNum / fpsDenum);
+			System.out.println("fps: " + fps);
+			vf.setFps(fps);
 			vf.setFrameCount(video.getNb_frames());
-
+			vf.setVideoBitrate(video.getBit_rate());
+			vf.setVideoCodecNAme(video.getCodec_name());
+			vf.setProfile(video.getProfile());
+			vf.setLevel(String.valueOf(video.getLevel()));
+			vf.setPixFormat(video.getPix_fmt());
+			
 		} catch (DbxException e) {
+			new Result(false, "dropbox exception while getting a direct link for the file");
 		}
+		
+		return new Result(true, "got video link and ffprobe ok", vf);
 	}
 
 	public boolean shareFile(String userMail, String id) {
@@ -141,7 +162,7 @@ public class DropboxLogic {
 					vf.setPath(fmd.getPathLower());
 
 					MediaMetadata media = fmd.getMediaInfo().getMetadataValue();
-					vf.setWidtn((int) media.getDimensions().getWidth());
+					vf.setWidth((int) media.getDimensions().getWidth());
 					vf.setHeight((int) media.getDimensions().getHeight());
 					vf.setTimeTaken(media.getTimeTaken());
 

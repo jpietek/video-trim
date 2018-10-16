@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.tuple.Pair;
 
+import com.cloud.video.editor.model.KeyframeSide;
 import com.cloud.video.editor.model.Result;
 import com.cloud.video.editor.model.Video;
 import com.cloud.video.editor.model.probe.Probe;
@@ -20,10 +21,6 @@ import com.google.api.client.util.Charsets;
 public class Mp4Utils {
 
 	private static final Executor mp4UtilsExecutor = Executors.newFixedThreadPool(64);
-	
-	enum KeyframeSide {
-		LEFT, RIGHT
-	}
 
 	public static Result mkvMerge(List<String> inputFiles, String outputFileName) {
 		StringBuffer cmd = new StringBuffer();
@@ -31,7 +28,7 @@ public class Mp4Utils {
 		for (int i = 0; i < inputFiles.size(); i++) {
 			cmd.append(inputFiles.get(i) + (i != inputFiles.size() - 1 ? " + " : ""));
 		}
- 
+
 		SysUtils.getExitCode(cmd.toString());
 
 		String url = outputFileName.replace("/var/www/html", "");
@@ -89,24 +86,24 @@ public class Mp4Utils {
 	public static Result concatProtocol(List<String> inputFiles, String outputFilename) {
 		StringBuffer cmd = new StringBuffer();
 		cmd.append("/vt/video_trim ");
-		
-		for(String input: inputFiles) {
+
+		for (String input : inputFiles) {
 			cmd.append(input + " ");
 		}
-		
+
 		cmd.append(outputFilename);
-		
+
 		boolean concatResult = SysUtils.getRuntimeExitCode(cmd.toString());
 		if (!concatResult) {
 			return new Result(false, "concat protocol ffmpeg command failed");
 		}
-		
+
 		String url = outputFilename.replace("/var/www/html", "");
 		Video gf = new Video();
 		gf.setDirectContentLink(url);
 		return new Result(true, "concat protocol ok", gf);
 	}
-	
+
 	public static Result fileConcat(List<String> inputFiles, String outputFilename) {
 		StringBuffer sb = new StringBuffer();
 		for (String fileName : inputFiles) {
@@ -140,7 +137,7 @@ public class Mp4Utils {
 		CompletableFuture<Double> leftKeyframeFuture = CompletableFuture.supplyAsync(() -> {
 			double left = seekPoint;
 			double right = seekPoint;
-			for (int i = 1; i <= 8; i++) {
+			for (int i = 1; i <= 7; i++) {
 				System.out.println("left keyframe iter: " + i);
 				right = left;
 				left -= Math.pow(2, i);
@@ -160,7 +157,7 @@ public class Mp4Utils {
 		CompletableFuture<Double> rightKeyframeFuture = CompletableFuture.supplyAsync(() -> {
 			double left = seekPoint;
 			double right = seekPoint;
-			for (int i = 1; i <= 8; i++) {
+			for (int i = 1; i <= 7; i++) {
 				System.out.println("right keyframe iter: " + i);
 				left = right;
 				right += Math.pow(2, i);
@@ -181,7 +178,7 @@ public class Mp4Utils {
 		Double rightKeyFrame = rightKeyframeFuture.join();
 
 		if (leftKeyFrame == null || rightKeyFrame == null) {
-			return new Result(false, "could not find keyframes in +/- 20 seconds interval around seek point");
+			return new Result(false, "could not find keyframes in +/- 128 seconds interval around seek point");
 		} else {
 			System.out.println("found keyframes: " + leftKeyFrame + " " + rightKeyFrame);
 			return new Result(true, "keyframes found", Pair.of(leftKeyFrame, rightKeyFrame));
@@ -221,30 +218,28 @@ public class Mp4Utils {
 		return closest;
 	}
 
-	public static Result trimReencodeSegment(double in, double duration, String inputPath, double fps,
-			String offsetSide, String outputPath, Probe ffprobeParams) {
+	public static Result trimReencodeSegment(Video v, double in, double duration, String inputPath, String outputPath,
+			KeyframeSide side) {
+		double fps = v.getFps();
 
-		if (offsetSide.equalsIgnoreCase("left")) {
+		if (side == KeyframeSide.LEFT) {
 			duration -= ((1 / fps) * 1.5);
 			in += 0.05;
 
-		} else if (offsetSide.equalsIgnoreCase("right")) {
+		} else if (side == KeyframeSide.RIGHT) {
 			in += ((1 / fps) * 1.5);
 			duration += 0.05;
 		}
 
-		Stream video = ffprobeParams.getStreams().get(0);
-		Stream audio = ffprobeParams.getStreams().get(1);
-
 		String cmd = "ffmpeg -y -loglevel panic -i " + inputPath + " -ss " + in + " -t " + duration
-				+ " -c:v libx264 -profile " + video.getProfile() + " -level " + video.getLevel() + " -b:v "
-				+ video.getBit_rate() + " -pix_fmt " + video.getPix_fmt() + " -c:a aac -b:a " + audio.getBit_rate()
+				+ " -c:v libx264 -profile " + v.getProfile() + " -level " + v.getLevel() + " -b:v "
+				+ v.getVideoBitrate() + " -pix_fmt " + v.getPixFormat() + " -c:a aac -b:a " + v.getAudioBitrate()
 				+ " " + outputPath;
-
+		
 		boolean trimResult = SysUtils.getExitCode(cmd);
 
 		if (!trimResult) {
-			return new Result(false, "trimming video chunk failed, " + inputPath + " " + in + " " + duration);
+			return new Result(false, "trimming video chunk failed " + in + " " + duration);
 		}
 
 		return new Result(true, "trim with reencode ok");
@@ -266,9 +261,9 @@ public class Mp4Utils {
 		return new Result(true, "file concat ok", gf);
 	}
 
-	public static Result extractKeyFramedSegment(double in, double out, String inputPath, String outputPath,
-			double fps, double offset) {
-		
+	public static Result extractKeyFramedSegment(double in, double out, String inputPath, String outputPath, double fps,
+			double offset) {
+
 		final double seekIn = in + offset;
 		final double duration = out - in - offset - 0.1;
 		String cmd = "ffmpeg -noaccurate_seek -y -loglevel panic -ss " + seekIn + " -i " + inputPath

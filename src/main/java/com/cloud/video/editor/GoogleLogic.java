@@ -82,7 +82,7 @@ public class GoogleLogic {
 				}
 				VideoMediaMetadata meta = file.getVideoMediaMetadata();
 				if (meta != null) {
-					gf.setWidtn(meta.getWidth());
+					gf.setWidth(meta.getWidth());
 					gf.setHeight(meta.getHeight());
 					gf.setDuration(meta.getDurationMillis());
 				}
