@@ -1,9 +1,11 @@
 package com.cloud.video.editor;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.logging.Level;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -21,53 +23,60 @@ import com.google.api.services.drive.model.File;
 import com.google.api.services.drive.model.File.VideoMediaMetadata;
 import com.google.api.services.drive.model.FileList;
 
+import lombok.extern.java.Log;
+
+@Log
 public class GoogleLogic {
 
-	private static HttpTransport HTTP_TRANSPORT;
+	private static HttpTransport httpTransport;
 
 	private static final String APPLICATION_NAME = "VideoManager";
 
 	private static final JacksonFactory JSON_FACTORY = JacksonFactory.getDefaultInstance();
-	
+
 	private OAuth2ClientContext oauth;
-	
+
 	static {
 		try {
-			HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
-		} catch (Throwable t) {
-			t.printStackTrace();
+			httpTransport = GoogleNetHttpTransport.newTrustedTransport();
+		} catch (Exception e) {
+			log.log(Level.SEVERE, e.getMessage(), e);
 			System.exit(1);
 		}
 	}
-	
+
 	public GoogleLogic(OAuth2ClientContext oauth) {
 		this.oauth = oauth;
 	}
-	
-	private Credential authorize() throws IOException {
-		Credential credential = new GoogleCredential.Builder().setTransport(HTTP_TRANSPORT).setJsonFactory(JSON_FACTORY)
-				.build();
+
+	private Credential authorize() {
+		Credential credential = new GoogleCredential.Builder().setTransport(httpTransport)
+				.setJsonFactory(JSON_FACTORY).build();
 		credential.setAccessToken(oauth.getAccessToken().getValue());
 		return credential;
 	}
-	
-	public Drive getDriveService() throws IOException {
+
+	public Drive getDriveService() {
 		Credential credential = authorize();
-		return new Drive.Builder(HTTP_TRANSPORT, JSON_FACTORY, credential).setApplicationName(APPLICATION_NAME).build();
+		return new Drive.Builder(httpTransport, JSON_FACTORY, credential)
+				.setApplicationName(APPLICATION_NAME).build();
 	}
 
 	public void getDirectLink(Video vf) {
 		Stream<String> out = SysUtils.getResultStream(
 				"/bin/bash /home/jp/sbin/get_drive_url " + vf.getWebContentLink());
-		Optional<String> url = out.filter(line -> line.contains("googleusercontent")).findFirst();
-		if(url.isPresent()) {
+		Optional<String> url = out.filter(line -> line.contains("googleusercontent"))
+				.findFirst();
+		if (url.isPresent()) {
 			vf.setDirectContentLink(url.get());
 		}
 	}
+
 	public List<Video> listFiles() {
 		try {
 			Drive service = getDriveService();
-			FileList result = service.files().list().setQ("mimeType='video/mp4'").setSpaces("drive").setPageSize(10)
+			FileList result = service.files().list().setQ("mimeType='video/mp4'")
+					.setSpaces("drive").setPageSize(10)
 					.setFields("nextPageToken, files(id, name, thumbnailLink, webContentLink, "
 							+ "webViewLink, videoMediaMetadata, shared, "
 							+ "size, fileExtension, createdTime, modifiedTime)")
@@ -95,8 +104,8 @@ public class GoogleLogic {
 				return gf;
 			}).collect(Collectors.toList());
 		} catch (IOException e) {
-			e.printStackTrace();
+			log.log(Level.SEVERE, e.getMessage(), e);
 		}
-		return null;
+		return new ArrayList<>();
 	}
 }

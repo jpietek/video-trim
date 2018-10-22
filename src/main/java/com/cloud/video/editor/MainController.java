@@ -20,7 +20,6 @@ import javax.servlet.Filter;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.tuple.Pair;
-import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.security.oauth2.resource.ResourceServerProperties;
@@ -41,9 +40,9 @@ import org.springframework.security.oauth2.provider.OAuth2Authentication;
 import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.cloud.video.editor.model.Compilation;
@@ -55,14 +54,16 @@ import com.cloud.video.editor.model.Result;
 import com.cloud.video.editor.model.User;
 import com.cloud.video.editor.model.UserRepository;
 import com.cloud.video.editor.model.Video;
-import com.cloud.video.editor.model.probe.Probe;
+import com.cloud.video.editor.utils.HttpUtils;
 import com.cloud.video.editor.utils.Mp4Utils;
-import com.cloud.video.editor.utils.ProbeUtils;
 import com.cloud.video.editor.utils.StringUtils;
+
+import lombok.extern.java.Log;
 
 @SpringBootApplication
 @EnableOAuth2Client
 @RestController
+@Log
 public class MainController extends WebSecurityConfigurerAdapter {
 
 	@Autowired
@@ -80,6 +81,8 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			"S00tGBw3cCkAAAAAAAAM6N6UvdHcsqGjkfI1jYGpeUS_ngU9XdFssa70QgK71aqw");
 
 	private Executor videoExecutor = Executors.newFixedThreadPool(128);
+
+	private static final String CHUNKS_DIR = "chunks";
 
 	@Bean
 	public FilterRegistrationBean oauth2ClientFilterRegistration(
@@ -119,15 +122,15 @@ public class MainController extends WebSecurityConfigurerAdapter {
 
 	@RequestMapping("/user")
 	public Principal user(Principal principal) {
-		System.out.println("user: " + principal);
+		log.info("user: " + principal);
 		OAuth2Authentication oAuth2Authentication = (OAuth2Authentication) principal;
 		Authentication authentication = oAuth2Authentication.getUserAuthentication();
 		@SuppressWarnings("unchecked")
 		Map<String, String> details = (Map<String, String>) authentication.getDetails();
-		System.out.println("mail: " + details.get("email"));
-		System.out.println("gender: " + details.get("gender"));
-		System.out.println("profile: " + details.get("profile"));
-		System.out.println("picture: " + details.get("picture"));
+		log.info("mail: " + details.get("email"));
+		log.info("gender: " + details.get("gender"));
+		log.info("profile: " + details.get("profile"));
+		log.info("picture: " + details.get("picture"));
 		if (!userRepository.existsByEmail(details.get("email"))) {
 			User u = new User();
 			u.setName(principal.getName());
@@ -140,37 +143,37 @@ public class MainController extends WebSecurityConfigurerAdapter {
 		return principal;
 	}
 
-	@RequestMapping(value = "/user/compilations/list/mail", method = RequestMethod.POST)
+	@PostMapping(value = "/user/compilations/list/mail")
 	public List<Compilation> getUserCompilations(@RequestBody CompilationsRequest req) {
-		System.out.println("user mail: " + req.getMail());
+		log.info("user mail: " + req.getMail());
 		List<Compilation> comps = compilationRepository
 				.findFirst10ByUserEmailOrderByModifiedDesc(req.getMail());
-		System.out.println("comps size: " + comps.size());
-		comps.stream().forEach(c -> System.out.println(c.toString()));
+		log.info("comps size: " + comps.size());
+		comps.stream().forEach(c -> log.info(c.toString()));
 		return comps;
 	}
 
-	@RequestMapping("/google/list")
+	@PostMapping("/google/list")
 	public List<Video> listGoogle() {
 		return googleLogic.listFiles();
 	}
 
-	@RequestMapping(value = "/dropbox/list/thumbsize/{size}", method = RequestMethod.GET)
+	@PostMapping(value = "/dropbox/list/thumbsize/{size}")
 	public List<Video> listDropbox(@PathVariable("size") String size) {
 		return dropboxLogic.listVideos(size);
 	}
 
-	@RequestMapping(value = "/google/getDirectLink", method = RequestMethod.POST)
+	@PostMapping(value = "/google/getDirectLink")
 	public Video getGoogleUrl(@RequestBody Video v) {
 		googleLogic.getDirectLink(v);
 		return v;
 	}
 
-	@RequestMapping(value = "/dropbox/getDirectLink", method = RequestMethod.POST)
+	@PostMapping(value = "/dropbox/getDirectLink")
 	public Video getDropboxUrl(@RequestBody Video v) {
 		Result updatedVideoRes = dropboxLogic.getDirectLink(v);
 		if (!updatedVideoRes.isSuccess()) {
-			System.out.println(updatedVideoRes.getResult());
+			log.info(updatedVideoRes.getMsg());
 		}
 		return v;
 	}
@@ -216,7 +219,7 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			return new Result(false, "can't create tmp dir for redering");
 		}
 		Video firstVideo = compilationReq.getVideos().iterator().next();
-		System.out.println("seek point: " + firstVideo.cutInSeconds() + " "
+		log.info("seek point: " + firstVideo.cutInSeconds() + " "
 				+ firstVideo.cutOutSeconds());
 
 		final Set<Video> clips = compilationReq.getVideos();
@@ -226,26 +229,23 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			final double out = c.cutOutSeconds();
 
 			List<String> chunksToConcat = new ArrayList<>();
-			CompletableFuture<Result> inResFuture = CompletableFuture.supplyAsync(() -> {
-				return Mp4Utils.getIFramesNearTimecodeFast(in, url);
-			}, videoExecutor);
-			CompletableFuture<Result> outResFuture = CompletableFuture.supplyAsync(() -> {
-				return Mp4Utils.getIFramesNearTimecodeFast(out, url);
-			}, videoExecutor);
+			CompletableFuture<Result> inResFuture = CompletableFuture.supplyAsync(
+					() -> Mp4Utils.getIFramesNearTimecodeFast(in, url), videoExecutor);
+			CompletableFuture<Result> outResFuture = CompletableFuture.supplyAsync(
+					() -> Mp4Utils.getIFramesNearTimecodeFast(out, url), videoExecutor);
 
 			Result inRes = inResFuture.join();
 			Result outRes = outResFuture.join();
 
 			if (!inRes.isSuccess() || !outRes.isSuccess()) {
-				System.out.println("extracting iframed tses failed: " + inRes.getMsg() + " "
-						+ outRes.getMsg());
-				return new Result(false, "extracting iframed tses failed: " + inRes.getMsg()
-						+ " " + outRes.getMsg());
+				final String msg = "extracting iframed tses failed";
+				log.info(msg + inRes.getMsg() + " " + outRes.getMsg());
+				return new Result(false, msg + inRes.getMsg() + " " + outRes.getMsg());
 			}
 
 			Pair<Double, Double> cutInIframeTs = (Pair<Double, Double>) inRes.getResult();
 			Pair<Double, Double> cutOutIframeTs = (Pair<Double, Double>) outRes.getResult();
-			Set<Double> keyframes = new HashSet<Double>();
+			Set<Double> keyframes = new HashSet<>();
 			keyframes.add(cutInIframeTs.getLeft());
 			keyframes.add(cutInIframeTs.getRight());
 			keyframes.add(cutOutIframeTs.getLeft());
@@ -261,62 +261,62 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			}
 
 			if (keyframes.size() == 2) {
-				System.out.println("only 2 keyframes found, reencode the whole segment");
+				log.info("only 2 keyframes found, reencode the whole segment");
 				return Mp4Utils.reencodeSingleSegment(url, in, out,
 						basepath + "/" + c.getSortId() + ".mkv");
 			}
 
-			String middlePath = basepath + "/chunks/" + c.getSortId() + "-middle.ts";
+			String middlePath = HttpUtils.buildURL(basepath, CHUNKS_DIR,
+					c.getSortId() + "-middle.ts");
 			CompletableFuture<Result> middleFuture = null;
 			if (keyframes.size() == 4) {
-				middleFuture = CompletableFuture.supplyAsync(() -> {
-					return Mp4Utils.extractKeyFramedSegment(cutInIframeTs.getRight(),
-							cutOutIframeTs.getLeft(), url, middlePath, c.getFps(), leftOffset);
-				}, videoExecutor);
+				middleFuture = CompletableFuture.supplyAsync(
+						() -> Mp4Utils.extractKeyFramedSegment(cutInIframeTs.getRight(),
+								cutOutIframeTs.getLeft(), url, middlePath, c.getFps(),
+								leftOffset),
+						videoExecutor);
 			}
 
 			if (!inRes.isSuccess() || !outRes.isSuccess()) {
-				System.out.println("extracting iframed tses failed: " + inRes.getMsg() + " "
+				log.info("extracting iframed tses failed: " + inRes.getMsg() + " "
 						+ outRes.getMsg());
 				return new Result(false, "extracting iframed tses failed: " + inRes.getMsg()
 						+ " " + outRes.getMsg());
 			}
 
-			System.out.println(cutInIframeTs + " " + in + " " + cutOutIframeTs + " " + out);
+			log.info(cutInIframeTs + " " + in + " " + cutOutIframeTs + " " + out);
 			if (cutInIframeTs.equals(cutOutIframeTs)) {
-				String output = basepath + "/chunks/" + c.getSortId() + ".mp4";
-				Result trimRes = Mp4Utils.trimReencodeSegment(c, cutInIframeTs.getLeft(),
+				String output = HttpUtils.buildURL(basepath, CHUNKS_DIR,
+						c.getSortId() + ".mp4");
+				return Mp4Utils.trimReencodeSegment(c, cutInIframeTs.getLeft(),
 						cutInIframeTs.getRight(), c.getDirectContentLink(), output,
 						KeyframeSide.FULLCHUNK);
-				return trimRes;
 			}
 
-			final String leftPath = basepath + "/chunks/" + c.getSortId() + "-left-full.ts";
-			final String rightPath = basepath + "/chunks/" + c.getSortId()
-					+ "-right-full.ts";
+			final String leftPath = HttpUtils.buildURL(basepath, CHUNKS_DIR,
+					c.getSortId() + "-left-full.ts");
+			final String rightPath = HttpUtils.buildURL(basepath, CHUNKS_DIR,
+					c.getSortId() + "-right-full.ts");
 			try {
-				FileUtils.forceMkdir(new File(basepath + "/chunks/"));
+				FileUtils.forceMkdir(new File(HttpUtils.buildURL(basepath, CHUNKS_DIR)));
 			} catch (IOException e) {
 				return new Result(false, "can't make temp chunk dir");
 			}
 
-			CompletableFuture<Result> extractLeftResFuture = CompletableFuture
-					.supplyAsync(() -> {
-						return Mp4Utils.extractKeyFramedSegment(cutInIframeTs.getLeft(),
-								cutInIframeTs.getRight(), url, leftPath, c.getFps(), leftOffset);
-					}, videoExecutor);
-			CompletableFuture<Result> extractRightResFuture = CompletableFuture
-					.supplyAsync(() -> {
-						return Mp4Utils.extractKeyFramedSegment(cutOutIframeTs.getLeft(),
-								cutOutIframeTs.getRight(), url, rightPath, c.getFps(),
-								rightOffset);
-					}, videoExecutor);
+			CompletableFuture<Result> extractLeftResFuture = CompletableFuture.supplyAsync(
+					() -> Mp4Utils.extractKeyFramedSegment(cutInIframeTs.getLeft(),
+							cutInIframeTs.getRight(), url, leftPath, c.getFps(), leftOffset),
+					videoExecutor);
+			CompletableFuture<Result> extractRightResFuture = CompletableFuture.supplyAsync(
+					() -> Mp4Utils.extractKeyFramedSegment(cutOutIframeTs.getLeft(),
+							cutOutIframeTs.getRight(), url, rightPath, c.getFps(), rightOffset),
+					videoExecutor);
 
 			Result extractLeftRes = extractLeftResFuture.join();
 			Result extractRightRes = extractRightResFuture.join();
 			if (!extractLeftRes.isSuccess() || !extractRightRes.isSuccess()) {
-				System.out.println("extracting keyframed segments failed: " + extractLeftRes
-						+ " " + extractRightRes);
+				log.info("extracting keyframed segments failed: " + extractLeftRes + " "
+						+ extractRightRes);
 				return new Result(false, "extracting keyframed segments failed: "
 						+ extractLeftRes + " " + extractRightRes);
 			}
@@ -335,8 +335,7 @@ public class MainController extends WebSecurityConfigurerAdapter {
 					rightPath, rightTrimmedPath, KeyframeSide.RIGHT);
 
 			if (!leftTrimRes.isSuccess() || !rightTrimRes.isSuccess()) {
-				System.out
-						.println("reencode trim failed: " + leftTrimRes + " " + rightTrimRes);
+				log.info("reencode trim failed: " + leftTrimRes + " " + rightTrimRes);
 				return new Result(false,
 						"reencode trim failed: " + leftTrimRes + " " + rightTrimRes);
 			}
@@ -348,7 +347,7 @@ public class MainController extends WebSecurityConfigurerAdapter {
 					&& keyframes.size() == 4) {
 				Result middleChunkRes = middleFuture.join();
 				if (!middleChunkRes.isSuccess()) {
-					System.out.println("reencode middle trim failed: " + middleChunkRes);
+					log.info("reencode middle trim failed: " + middleChunkRes);
 					return new Result(false, "reencode middle trim failed: " + middleChunkRes);
 				}
 				chunksToConcat.add(middlePath);
@@ -371,9 +370,10 @@ public class MainController extends WebSecurityConfigurerAdapter {
 		}
 
 		List<String> chunkPaths = IntStream.range(0, clips.size())
-				.mapToObj(n -> basepath + "/" + n + ".mp4").collect(Collectors.toList());
+				.mapToObj(n -> HttpUtils.buildURL(basepath, n + ".mp4"))
+				.collect(Collectors.toList());
 
-		System.out.println("chunk paths: " + chunkPaths);
+		log.info("chunk paths: " + chunkPaths);
 		String mp4Out = basepath + "/out.mp4";
 		return Mp4Utils.fileConcat(chunkPaths, mp4Out);
 	}
