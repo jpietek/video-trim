@@ -3,11 +3,8 @@ package com.cloud.video.editor.utils;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.lang.reflect.Field;
 import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
-
-import com.cloud.video.editor.model.Result;
 
 import lombok.extern.java.Log;
 
