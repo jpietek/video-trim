@@ -17,6 +17,10 @@ import lombok.extern.java.Log;
 @Log
 public class ProbeUtils {
 
+	private ProbeUtils() {
+
+	}
+
 	public static Result probeVideo(String videoPath) {
 		final String[] cmds = { "ffprobe", "-v", "quiet", "-print_format", "json",
 				"-show_format", "-show_streams", videoPath };
