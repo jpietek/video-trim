@@ -169,14 +169,14 @@ public class MainController extends WebSecurityConfigurerAdapter {
 
 	@PostMapping(value = "/google/getDirectLink")
 	public Video getGoogleUrl(@RequestBody VideoPojo videoPojo) {
-		final Video video = new Video(videoPojo);
+		final Video video = Video.fromPojo(videoPojo);
 		googleLogic.getDirectLink(video);
 		return video;
 	}
 
 	@PostMapping(value = "/dropbox/getDirectLink")
 	public Video getDropboxUrl(@RequestBody VideoPojo videoPojo) {
-		final Video video = new Video(videoPojo);
+		final Video video = Video.fromPojo(videoPojo);
 		Result updatedVideoRes = dropboxLogic.getDirectLink(video);
 		if (!updatedVideoRes.isSuccess()) {
 			log.info(updatedVideoRes.getMsg());

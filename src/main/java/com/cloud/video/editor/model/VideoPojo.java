@@ -22,7 +22,7 @@ public class VideoPojo {
 	private String webContentLink;
 	private int width;
 	private int height;
-	private long duration;
+	protected long duration;
 	private Date created;
 	private Date modified;
 	private Date timeTaken;
@@ -31,8 +31,8 @@ public class VideoPojo {
 	private double gpsLong;
 	private double fps;
 	private long frameCount;
-	private double cutIn;
-	private double cutOut;
+	protected double cutIn;
+	protected double cutOut;
 	private int sortId;
 	private double speed = 1.0;
 	private String audioSource;
