@@ -5,6 +5,10 @@ import java.security.SecureRandom;
 
 public class StringUtils {
 
+	private StringUtils() {
+
+	}
+
 	public static String getRandomId() {
 		SecureRandom random = new SecureRandom();
 		String token = new BigInteger(128, random).toString(16);
