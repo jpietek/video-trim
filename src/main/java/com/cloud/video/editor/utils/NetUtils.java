@@ -1,14 +1,13 @@
 package com.cloud.video.editor.utils;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.URL;
 import java.net.UnknownHostException;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.apache.http.HttpEntity;
@@ -20,20 +19,19 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.util.EntityUtils;
 
+import lombok.extern.java.Log;
+
 /**
  * Utils doing the TCP/HTTP calls
  */
+@Log
 public class NetUtils {
-
-	private final static Logger LOGGER = Logger.getLogger(NetUtils.class
-			.getName());
 
 	public static String getHostname() {
 		try {
 			return InetAddress.getLocalHost().getHostName();
 		} catch (UnknownHostException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			log.log(Level.SEVERE, e.getMessage(), e);
 		}
 
 		return null;
@@ -48,20 +46,11 @@ public class NetUtils {
 	 * @return
 	 */
 	public static boolean serverListening(String host, int port) {
-		Socket s = null;
-		try {
-			s = new Socket(host, port);
+		try (Socket s = new Socket(host, port)) {
 			return true;
 		} catch (Exception e) {
-			LOGGER.info("serverListening: <" + host + ":" + port + "> : "
-					+ e.getMessage());
+			log.info("serverListening: <" + host + ":" + port + "> : " + e.getMessage());
 			return false;
-		} finally {
-			if (s != null)
-				try {
-					s.close();
-				} catch (Exception e) {
-				}
 		}
 	}
 
@@ -71,8 +60,7 @@ public class NetUtils {
 		// certificates.
 
 		try {
-			HttpURLConnection connection = (HttpURLConnection) new URL(url)
-					.openConnection();
+			HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
 			connection.setConnectTimeout(timeoutInSeconds * 1000);
 			connection.setReadTimeout(timeoutInSeconds * 1000);
 			connection.setRequestMethod("HEAD");
@@ -93,10 +81,10 @@ public class NetUtils {
 			org.apache.http.HttpResponse resp = client.execute(get);
 			HttpEntity entity = resp.getEntity();
 			String responseString = EntityUtils.toString(entity);
-			LOGGER.info("archive response: " + responseString);
+			log.info("archive response: " + responseString);
 			return responseString.replace("\\r\\n", "");
 		} catch (IOException e) {
-			e.printStackTrace();
+			log.log(Level.SEVERE, e.getMessage(), e);
 			return null;
 		}
 	}
@@ -121,25 +109,10 @@ public class NetUtils {
 			stmResponse = client.execute(post);
 			HttpEntity entity = stmResponse.getEntity();
 			String responseString = EntityUtils.toString(entity);
-			LOGGER.info("archive response: " + responseString);
+			log.info("archive response: " + responseString);
 			return responseString.replace("\\r\\n", "");
 		} catch (Exception e) {
 			return null;
 		}
-	}
-
-	public static String getStmHostname() {
-		String hostname = NetUtils.getHostname();
-		try {
-			URL whatismyip = new URL("http://checkip.amazonaws.com");
-			BufferedReader in = new BufferedReader(new InputStreamReader(
-					whatismyip.openStream()));
-			String ip = in.readLine();
-			String amazonDomain = ip.replaceAll("\\.", "-") + ".tellyo.com";
-			return amazonDomain;
-		} catch (Exception e) {
-
-		}
-		return hostname;
 	}
 }

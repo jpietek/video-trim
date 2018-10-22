@@ -1,7 +1,7 @@
 package com.cloud.video.editor.utils;
 
 import java.io.UnsupportedEncodingException;
-import java.util.logging.Logger;
+import java.util.logging.Level;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.client.HttpClient;
@@ -16,10 +16,10 @@ import org.apache.http.util.EntityUtils;
 
 import com.cloud.video.editor.model.Result;
 
-public class HttpUtils {
+import lombok.extern.java.Log;
 
-	private final static Logger LOGGER = Logger.getLogger(HttpUtils.class
-			.getName());
+@Log
+public class HttpUtils {
 
 	public static Result post(String url, String json, int timeoutInSeconds) {
 		HttpPost post = new HttpPost(url);
@@ -51,7 +51,7 @@ public class HttpUtils {
 			HttpEntity entity = stmResponse.getEntity();
 			String responseString = EntityUtils.toString(entity).replace(
 					"\\r\\n", "");
-			LOGGER.info("http post response: " + responseString);
+			log.info("http post response: " + responseString);
 			if (stmResponse.getStatusLine().getStatusCode() == 200) {
 				return new Result(true, responseString);
 			} else {
@@ -59,12 +59,10 @@ public class HttpUtils {
 						+ responseString);
 			}
 		} catch (ConnectTimeoutException e) {
-			e.printStackTrace();
-			LOGGER.severe("call: " + e.getMessage());
+			log.log(Level.SEVERE, e.getMessage(), e);
 			return new Result(false, "timeout");
 		} catch (Exception e) {
-			e.printStackTrace();
-			LOGGER.severe("call: " + e.getMessage());
+			log.log(Level.SEVERE, e.getMessage(), e);
 			return new Result(false, "HTTP call error : " + e.getMessage());
 		}
 	}

@@ -10,6 +10,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.logging.Level;
 
 import org.apache.commons.io.FilenameUtils;
 
@@ -35,6 +36,9 @@ import com.dropbox.core.v2.sharing.FileMemberActionResult;
 import com.dropbox.core.v2.sharing.MemberSelector;
 import com.dropbox.core.v2.users.FullAccount;
 
+import lombok.extern.java.Log;
+
+@Log
 public class DropboxLogic {
 
 	DbxClientV2 client;
@@ -45,9 +49,8 @@ public class DropboxLogic {
 	}
 
 	public Result getDirectLink(Video vf) {
-		GetTemporaryLinkResult res;
 		try {
-			res = client.files().getTemporaryLink(vf.getPath());
+			GetTemporaryLinkResult res = client.files().getTemporaryLink(vf.getPath());
 			String path = res.getLink();
 			vf.setDirectContentLink(path);
 			Result probeRes = ProbeUtils.probeVideo(path);
@@ -58,63 +61,71 @@ public class DropboxLogic {
 			Probe p = (Probe) probeRes.getResult();
 			Optional<Stream> videoStreamOpt = p.getStreams().stream()
 					.filter(s -> s.getCodec_type().equalsIgnoreCase("video")).findFirst();
+
 			if (!videoStreamOpt.isPresent()) {
 				new Result(false, "no video present in given file");
 			}
-			
+
 			Optional<Stream> audioStreamOpt = p.getStreams().stream()
 					.filter(s -> s.getCodec_type().equalsIgnoreCase("video")).findFirst();
 			if (!audioStreamOpt.isPresent()) {
 				new Result(false, "no audio present in given file");
 			}
-			
-			Stream audio = audioStreamOpt.get();
-			vf.setAudioCodecName(audio.getCodec_name());
-			vf.setAudioBitrate(256000);
-			
-			Stream video = videoStreamOpt.get();
-			String fpsString = video.getAvg_frame_rate();
 
-			if (fpsString == null) {
-				return new Result(false, "can't determing video fps");
+			if (audioStreamOpt.isPresent()) {
+				Stream audio = audioStreamOpt.get();
+				vf.setAudioCodecName(audio.getCodec_name());
+				vf.setAudioBitrate(256000);
 			}
 
-			int fpsNum = Integer.parseInt(fpsString.split("\\/")[0]);
-			int fpsDenum = Integer.parseInt(fpsString.split("\\/")[1]);
-			double fps = Double.valueOf(1.0 * fpsNum / fpsDenum);
-			System.out.println("fps: " + fps);
-			vf.setFps(fps);
-			vf.setFrameCount(video.getNb_frames());
-			vf.setVideoBitrate(video.getBit_rate());
-			vf.setVideoCodecNAme(video.getCodec_name());
-			vf.setProfile(video.getProfile());
-			vf.setLevel(String.valueOf(video.getLevel()));
-			vf.setPixFormat(video.getPix_fmt());
-			
+			if (videoStreamOpt.isPresent()) {
+				Stream video = videoStreamOpt.get();
+				String fpsString = video.getAvg_frame_rate();
+
+				if (fpsString == null) {
+					return new Result(false, "can't determing video fps");
+				}
+
+				int fpsNum = Integer.parseInt(fpsString.split("\\/")[0]);
+				int fpsDenum = Integer.parseInt(fpsString.split("\\/")[1]);
+				double fps = 1.0 * fpsNum / fpsDenum;
+				log.info("fps: " + fps);
+				vf.setFps(fps);
+				vf.setFrameCount(video.getNb_frames());
+				vf.setVideoBitrate(video.getBit_rate());
+				vf.setVideoCodecNAme(video.getCodec_name());
+				vf.setProfile(video.getProfile());
+				vf.setLevel(String.valueOf(video.getLevel()));
+				vf.setPixFormat(video.getPix_fmt());
+			} else {
+				return new Result(false, "video stream not present");
+			}
+
 		} catch (DbxException e) {
 			new Result(false, "dropbox exception while getting a direct link for the file");
 		}
-		
+
 		return new Result(true, "got video link and ffprobe ok", vf);
 	}
 
 	public boolean shareFile(String userMail, String id) {
 		try {
 			List<FileMemberActionResult> share = client.sharing()
-					.addFileMemberBuilder(id, Arrays.asList(MemberSelector.email(userMail))).withQuiet(true)
-					.withAccessLevel(AccessLevel.VIEWER).start();
+					.addFileMemberBuilder(id, Arrays.asList(MemberSelector.email(userMail)))
+					.withQuiet(true).withAccessLevel(AccessLevel.VIEWER).start();
 			if (!share.isEmpty()) {
 				return share.get(0).getResult().isSuccess();
 			}
 		} catch (DbxException e) {
-			e.printStackTrace();
+			log.log(Level.SEVERE, e.getMessage(), e);
 		}
 		return false;
 	}
 
 	public void saveThumbnail(String id, String path, String size) {
-		System.out.println("got thumb size: " + size);
-		String outPath = "/var/www/html/thumbs/" + id.replaceAll("id:", "") + "-" + size + ".jpg";
+		log.info("got thumb size: " + size);
+		String outPath = "/var/www/html/thumbs/" + id.replaceAll("id:", "") + "-" + size
+				+ ".jpg";
 		if (new File(outPath).exists()) {
 			return;
 		}
@@ -127,28 +138,30 @@ public class DropboxLogic {
 		}
 
 		try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
-			DbxDownloader<FileMetadata> dl = client.files().getThumbnailBuilder(path).withFormat(ThumbnailFormat.JPEG)
-					.withSize(dropboxThumbSize).start();
+			DbxDownloader<FileMetadata> dl = client.files().getThumbnailBuilder(path)
+					.withFormat(ThumbnailFormat.JPEG).withSize(dropboxThumbSize).start();
 			dl.download(outputStream);
 			try (OutputStream file = new FileOutputStream(outPath)) {
 				outputStream.writeTo(file);
 			}
+			dl.close();
 		} catch (DbxException | IOException e) {
-			e.printStackTrace();
+			log.log(Level.SEVERE, e.getMessage(), e);
 		}
 	}
 
 	public List<Video> listVideos(String thumbSize) {
-		List<Video> videos = new ArrayList<Video>();
+		List<Video> videos = new ArrayList<>();
 		try {
 			FullAccount account = client.users().getCurrentAccount();
-			System.out.println(account.getName().getDisplayName());
+			log.info(account.getName().getDisplayName());
 
-			ListFolderResult result = client.files().listFolderBuilder("/filmy").withIncludeDeleted(false)
-					.withIncludeMediaInfo(true).withRecursive(false).start();
+			ListFolderResult result = client.files().listFolderBuilder("/filmy")
+					.withIncludeDeleted(false).withIncludeMediaInfo(true).withRecursive(false)
+					.start();
 			List<Metadata> folderContents = result.getEntries();
 
-			List<CompletableFuture> thumbFutures = new ArrayList<>();
+			List<CompletableFuture<Void>> thumbFutures = new ArrayList<>();
 
 			folderContents.stream().forEach(file -> {
 				if (file instanceof FileMetadata) {
@@ -174,23 +187,24 @@ public class DropboxLogic {
 							vf.setGpsLong(video.getLocation().getLongitude());
 						}
 
-						thumbFutures.add(CompletableFuture.runAsync(() -> {
-							this.saveThumbnail(vf.getVideoId(), vf.getPath(), thumbSize);
-						}));
+						thumbFutures.add(CompletableFuture.runAsync(() -> this
+								.saveThumbnail(vf.getVideoId(), vf.getPath(), thumbSize)));
 
-						vf.setThumbnailLink("http://sdi.myftp.org:81/thumbs/" + vf.getVideoId().replaceAll("id:", "")
-								+ "-" + thumbSize + ".jpg");
+						vf.setThumbnailLink("http://sdi.myftp.org:81/thumbs/"
+								+ vf.getVideoId().replaceAll("id:", "") + "-" + thumbSize
+								+ ".jpg");
 
 						videos.add(vf);
 					}
 				}
 			});
 
-			CompletableFuture[] f = thumbFutures.toArray(new CompletableFuture[thumbFutures.size()]);
+			CompletableFuture<Void>[] f = thumbFutures
+					.toArray(new CompletableFuture[thumbFutures.size()]);
 			CompletableFuture.allOf(f).join();
 
 		} catch (Exception e) {
-			e.printStackTrace();
+			log.log(Level.SEVERE, e.getMessage(), e);
 			return videos;
 		}
 
