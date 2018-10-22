@@ -54,6 +54,7 @@ import com.cloud.video.editor.model.Result;
 import com.cloud.video.editor.model.User;
 import com.cloud.video.editor.model.UserRepository;
 import com.cloud.video.editor.model.Video;
+import com.cloud.video.editor.model.VideoPojo;
 import com.cloud.video.editor.utils.HttpUtils;
 import com.cloud.video.editor.utils.Mp4Utils;
 import com.cloud.video.editor.utils.StringUtils;
@@ -125,13 +126,16 @@ public class MainController extends WebSecurityConfigurerAdapter {
 		log.info("user: " + principal);
 		OAuth2Authentication oAuth2Authentication = (OAuth2Authentication) principal;
 		Authentication authentication = oAuth2Authentication.getUserAuthentication();
+
+		final String email = "email";
+
 		@SuppressWarnings("unchecked")
 		Map<String, String> details = (Map<String, String>) authentication.getDetails();
-		log.info("mail: " + details.get("email"));
+		log.info("mail: " + details.get(email));
 		log.info("gender: " + details.get("gender"));
 		log.info("profile: " + details.get("profile"));
 		log.info("picture: " + details.get("picture"));
-		if (!userRepository.existsByEmail(details.get("email"))) {
+		if (!userRepository.existsByEmail(details.get(email))) {
 			User u = new User();
 			u.setName(principal.getName());
 			u.setEmail(details.get("email"));
@@ -164,18 +168,20 @@ public class MainController extends WebSecurityConfigurerAdapter {
 	}
 
 	@PostMapping(value = "/google/getDirectLink")
-	public Video getGoogleUrl(@RequestBody Video v) {
-		googleLogic.getDirectLink(v);
-		return v;
+	public Video getGoogleUrl(@RequestBody VideoPojo videoPojo) {
+		final Video video = new Video(videoPojo);
+		googleLogic.getDirectLink(video);
+		return video;
 	}
 
 	@PostMapping(value = "/dropbox/getDirectLink")
-	public Video getDropboxUrl(@RequestBody Video v) {
-		Result updatedVideoRes = dropboxLogic.getDirectLink(v);
+	public Video getDropboxUrl(@RequestBody VideoPojo videoPojo) {
+		final Video video = new Video(videoPojo);
+		Result updatedVideoRes = dropboxLogic.getDirectLink(video);
 		if (!updatedVideoRes.isSuccess()) {
 			log.info(updatedVideoRes.getMsg());
 		}
-		return v;
+		return video;
 	}
 
 	@RequestMapping("/preview")
@@ -272,8 +278,7 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			if (keyframes.size() == 4) {
 				middleFuture = CompletableFuture.supplyAsync(
 						() -> Mp4Utils.extractKeyFramedSegment(cutInIframeTs.getRight(),
-								cutOutIframeTs.getLeft(), url, middlePath, c.getFps(),
-								leftOffset),
+								cutOutIframeTs.getLeft(), url, middlePath, leftOffset),
 						videoExecutor);
 			}
 
@@ -303,13 +308,14 @@ public class MainController extends WebSecurityConfigurerAdapter {
 				return new Result(false, "can't make temp chunk dir");
 			}
 
-			CompletableFuture<Result> extractLeftResFuture = CompletableFuture.supplyAsync(
-					() -> Mp4Utils.extractKeyFramedSegment(cutInIframeTs.getLeft(),
-							cutInIframeTs.getRight(), url, leftPath, c.getFps(), leftOffset),
-					videoExecutor);
+			CompletableFuture<Result> extractLeftResFuture = CompletableFuture
+					.supplyAsync(
+							() -> Mp4Utils.extractKeyFramedSegment(cutInIframeTs.getLeft(),
+									cutInIframeTs.getRight(), url, leftPath, leftOffset),
+							videoExecutor);
 			CompletableFuture<Result> extractRightResFuture = CompletableFuture.supplyAsync(
 					() -> Mp4Utils.extractKeyFramedSegment(cutOutIframeTs.getLeft(),
-							cutOutIframeTs.getRight(), url, rightPath, c.getFps(), rightOffset),
+							cutOutIframeTs.getRight(), url, rightPath, rightOffset),
 					videoExecutor);
 
 			Result extractLeftRes = extractLeftResFuture.join();
