@@ -18,44 +18,6 @@ public class SystemTools {
 
 	}
 
-	public static int getUnixPID(Process process) {
-		log.info(process.getClass().getName());
-		if (process.getClass().getName().equals("java.lang.UNIXProcess")) {
-			Class<?> cl = process.getClass();
-			try {
-				Field field = cl.getDeclaredField("pid");
-				field.setAccessible(true);
-				Object pidObject = field.get(process);
-				return (int) pidObject;
-			} catch (Exception e) {
-				log.info("can't get process pid, not unix process");
-			}
-		}
-		return -1;
-	}
-
-	public static Result killUnixProcess(Process process, int signal) {
-		int pid = getUnixPID(process);
-
-		if (pid == -1) {
-			return new Result(false, "can't get ffmpeg process pid");
-		}
-
-		log.info("ffmpeg pid to kill: " + pid);
-
-		try {
-			Runtime.getRuntime().exec("kill -" + signal + " " + pid).waitFor();
-		} catch (IOException e) {
-			log.info("ffmpeg kill exception");
-			return new Result(false, "can't kill ffmpeg process with pid: " + pid);
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-		}
-
-		log.info("ffmpeg kill ok");
-		return new Result(true, "process killed");
-	}
-
 	public static boolean executeCommand(String cmd) {
 
 		String[] commands = { "/bin/sh", "-c", cmd };
