@@ -5,16 +5,16 @@ import java.util.Map;
 
 import org.springframework.stereotype.Repository;
 
+import lombok.NoArgsConstructor;
+
 /**
  * Stores user's token infos (session, cursor) in redis.
  */
 @Repository
+@NoArgsConstructor
 public class UserTokenRepository {
 
     private final Map<String, String> dropboxTokens = new HashMap<String, String>();
-
-    public UserTokenRepository() {
-    }
 
     public void setValue(final String key, final String value) {
     	dropboxTokens.put(key, value);

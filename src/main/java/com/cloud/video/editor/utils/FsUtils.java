@@ -10,15 +10,15 @@ import org.apache.commons.io.FileUtils;
 
 public class FsUtils {
 	
-	public static List<byte[]> splitFile(int chunkSize, File file) {
+	private FsUtils() {
+		
+	}
 
-		byte[] fileInBytes = null;
-		try {
-			fileInBytes = FileUtils.readFileToByteArray(file);
-		} catch (IOException e) {
-		}
+	public static List<byte[]> splitFile(int chunkSize, File file) throws IOException {
 
-		List<byte[]> videoChunks = new ArrayList<byte[]>();
+		byte[] fileInBytes = FileUtils.readFileToByteArray(file);
+
+		List<byte[]> videoChunks = new ArrayList<>();
 		int len = fileInBytes.length;
 
 		for (int i = 0; i < len - chunkSize + 1; i += chunkSize)
@@ -29,15 +29,14 @@ public class FsUtils {
 
 		return videoChunks;
 	}
-	
+
 	public static boolean isFilenameValid(String file) {
-	    File f = new File(file);
-	    try {
-	       f.getCanonicalPath();
-	       return true;
-	    }
-	    catch (IOException e) {
-	       return false;
-	    }
+		File f = new File(file);
+		try {
+			f.getCanonicalPath();
+			return true;
+		} catch (IOException e) {
+			return false;
+		}
 	}
 }
