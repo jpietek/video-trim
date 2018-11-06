@@ -1,13 +1,11 @@
 package com.cloud.video.editor;
 
-import static org.slf4j.LoggerFactory.getLogger;
 import static org.springframework.util.StringUtils.isEmpty;
 
 import java.util.Map;
 
 import javax.servlet.http.HttpSession;
 
-import org.slf4j.Logger;
 import org.springframework.stereotype.Service;
 
 import com.dropbox.core.DbxAuthFinish;
@@ -20,8 +18,6 @@ import com.dropbox.core.v2.files.ListFolderResult;
 
 @Service
 public class DropboxService {
-
-	private static final Logger LOG = getLogger(DropboxService.class);
 
 	private final DropboxConfigProperties dropboxConfigProp;
 

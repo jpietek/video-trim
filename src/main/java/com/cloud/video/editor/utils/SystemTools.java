@@ -3,50 +3,16 @@ package com.cloud.video.editor.utils;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.lang.reflect.Field;
 import java.util.concurrent.TimeoutException;
-import java.util.logging.Logger;
+import java.util.logging.Level;
 
-import com.cloud.video.editor.model.Result;
+import lombok.extern.java.Log;
 
+@Log
 public class SystemTools {
 
-	private final static Logger LOGGER = Logger.getLogger(SystemTools.class.getName());
+	private SystemTools() {
 
-	public static int getUnixPID(Process process) {
-		System.out.println(process.getClass().getName());
-		if (process.getClass().getName().equals("java.lang.UNIXProcess")) {
-			Class<?> cl = process.getClass();
-			try {
-				Field field = cl.getDeclaredField("pid");
-				field.setAccessible(true);
-				Object pidObject = field.get(process);
-				return (int) pidObject;
-			} catch (Exception e) {
-				LOGGER.info("can't get process pid, not unix process");
-			}
-		}
-		return -1;
-	}
-
-	public static Result killUnixProcess(Process process, int signal) {
-		int pid = getUnixPID(process);
-
-		if (pid == -1) {
-			return new Result(false, "can't get ffmpeg process pid");
-		}
-
-		LOGGER.info("ffmpeg pid to kill: " + pid);
-
-		try {
-			Runtime.getRuntime().exec("kill -" + signal + " " + pid).waitFor();
-		} catch (InterruptedException | IOException e) {
-			LOGGER.info("ffmpeg kill exception");
-			return new Result(false, "can't kill ffmpeg process with pid: " + pid);
-		}
-
-		LOGGER.info("ffmpeg kill ok");
-		return new Result(true, "process killed");
 	}
 
 	public static boolean executeCommand(String cmd) {
@@ -57,13 +23,9 @@ public class SystemTools {
 		try {
 			proc = Runtime.getRuntime().exec(commands);
 			proc.waitFor();
-			if (proc.exitValue() == 0) {
-				return true;
-			} else {
-				return false;
-			}
+			return proc.exitValue() == 0;
 		} catch (Exception e) {
-			e.printStackTrace();
+			log.log(Level.SEVERE, e.getMessage(), e);
 		}
 		return false;
 	}
@@ -83,7 +45,7 @@ public class SystemTools {
 				return "";
 			}
 		} catch (Exception e) {
-			e.printStackTrace();
+			log.log(Level.SEVERE, e.getMessage(), e);
 		}
 		return "";
 	}
@@ -117,11 +79,12 @@ public class SystemTools {
 			this.process = process;
 		}
 
+		@Override
 		public void run() {
 			try {
 				exit = process.waitFor();
 			} catch (InterruptedException ignore) {
-				return;
+				Thread.currentThread().interrupt();
 			}
 		}
 	}
