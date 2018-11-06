@@ -20,7 +20,6 @@ import javax.servlet.Filter;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.tuple.Pair;
-import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.security.oauth2.resource.ResourceServerProperties;
@@ -55,9 +54,7 @@ import com.cloud.video.editor.model.Result;
 import com.cloud.video.editor.model.User;
 import com.cloud.video.editor.model.UserRepository;
 import com.cloud.video.editor.model.Video;
-import com.cloud.video.editor.model.probe.Probe;
 import com.cloud.video.editor.utils.Mp4Utils;
-import com.cloud.video.editor.utils.ProbeUtils;
 import com.cloud.video.editor.utils.StringUtils;
 
 @SpringBootApplication
