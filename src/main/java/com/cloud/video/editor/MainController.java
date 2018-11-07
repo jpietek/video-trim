@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.security.Principal;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
@@ -11,6 +12,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -219,111 +221,88 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			return saveRes;
 		}
 
-		String basepath = "/var/www/html/out/" + StringUtils.getRandomId();
+		final String basepath = "/var/www/html/out/" + StringUtils.getRandomId();
 
 		try {
-			FileUtils.forceMkdir(new java.io.File(basepath));
+			FileUtils.forceMkdir(new File(basepath));
+			FileUtils.forceMkdir(new File(HttpUtils.buildURL(basepath, CHUNKS_DIR)));
 		} catch (IOException e) {
-			return new Result(false, "can't create tmp dir for redering");
+			return new Result(false, "can't create video basedir");
 		}
-
+		
 		final Set<Video> clips = compilationReq.getVideos();
 		List<Result> clipRenderResults = clips.parallelStream().map(c -> {
+
 			final String url = c.getDirectContentLink();
 			final double in = c.cutInSeconds();
 			final double out = c.cutOutSeconds();
 
+			final String leftPath = HttpUtils.buildURL(basepath, CHUNKS_DIR, c.getSortId() + "-left-full.ts");
+			final String rightPath = HttpUtils.buildURL(basepath, CHUNKS_DIR, c.getSortId() + "-right-full.ts");
+			final String leftTrimmedPath = leftPath.replace("-full", "");
+			final String rightTrimmedPath = rightPath.replace("-full", "");
+			final String middlePath = HttpUtils.buildURL(basepath, CHUNKS_DIR, c.getSortId() + "-middle.ts");
+
+			final CompletionStage<Double> inLeftFuture = Mp4Utils.getLeftKeyframe(in, url);
+			final CompletionStage<Double> inRightFuture = Mp4Utils.getRightKeyframe(in, url);
+			final CompletionStage<Double> outLeftFuture = Mp4Utils.getLeftKeyframe(out, url);
+			final CompletionStage<Double> outRightFuture = Mp4Utils.getRightKeyframe(out, url);
+
+			final CompletableFuture<Boolean> leftChunkResult = inLeftFuture
+					.thenCombine(inRightFuture, (leftKeyframe, rightKeyframe) -> {
+						Mp4Utils.extractKeyFramedSegment(leftKeyframe, (Double) rightKeyframe, url, leftPath, 0.15);
+
+						final double trimLeftIn = in - leftKeyframe;
+						final double segmentDuration = (Double) rightKeyframe - leftKeyframe;
+						final double leftDuration = segmentDuration - trimLeftIn;
+
+						return Mp4Utils.trimReencodeSegment(c, trimLeftIn, leftDuration, leftPath, leftTrimmedPath,
+								KeyframeSide.LEFT);
+					}).toCompletableFuture();
+
+			final CompletableFuture<Boolean> rightChunkResult = outLeftFuture
+					.thenCombine(outRightFuture, (leftKeyframe, rightKeyframe) -> {
+						Mp4Utils.extractKeyFramedSegment(leftKeyframe, (Double) rightKeyframe, url, rightPath, 0.15);
+
+						final double trimRightIn = 0;
+						final double rightDuration = out - leftKeyframe;
+
+						return Mp4Utils.trimReencodeSegment(c, trimRightIn, rightDuration, rightPath, rightTrimmedPath,
+								KeyframeSide.RIGHT);
+					}).toCompletableFuture();
+
+			final CompletableFuture<Boolean> middleChunkResult = inRightFuture
+					.thenCombine(outLeftFuture, (leftKeyframe, rightKeyframe) -> {
+						if (leftKeyframe == (double) rightKeyframe) {
+							return false;
+						}
+
+						final double gopLength = (Double) rightKeyframe - leftKeyframe;
+						final double leftOffset = 0.07 * gopLength;
+
+						return Mp4Utils.extractKeyFramedSegment(leftKeyframe, (Double) rightKeyframe, url, middlePath,
+								leftOffset);
+					}).toCompletableFuture();
+
+			final List<String> chunksToConcat = new ArrayList<>();
 			try {
-				CompletableFuture<Double> inLeftFuture = CompletableFuture
-						.supplyAsync(() -> Mp4Utils.getLeftKeyframe(in, url));
-				CompletableFuture<Double> inRightFuture = CompletableFuture
-						.supplyAsync(() -> Mp4Utils.getRightKeyframe(in, url));
-				CompletableFuture<Double> outLeftFuture = CompletableFuture
-						.supplyAsync(() -> Mp4Utils.getLeftKeyframe(out, url));
-				CompletableFuture<Double> outRightFuture = CompletableFuture
-						.supplyAsync(() -> Mp4Utils.getRightKeyframe(out, url));
-
-				Pair<Double, Double> cutInIframeTs = Pair.of(inLeftFuture.get(), inRightFuture.get());
-				Pair<Double, Double> cutOutIframeTs = Pair.of(outLeftFuture.get(), outRightFuture.get());
-				Set<Double> keyframes = new HashSet<>();
-				keyframes.add(cutInIframeTs.getLeft());
-				keyframes.add(cutInIframeTs.getRight());
-				keyframes.add(cutOutIframeTs.getLeft());
-				keyframes.add(cutOutIframeTs.getRight());
-
-				if (keyframes.size() < 2) {
-					return new Result(false, "failed to extract at least 2 keyframes");
-				}
-
-				if (keyframes.size() == 2) {
-					log.info("only 2 keyframes found, reencode the whole segment");
-					return Mp4Utils.reencodeSingleSegment(url, in, out, basepath + "/" + c.getSortId() + ".mkv");
-				}
-
-				double leftGopLength = cutInIframeTs.getRight() - cutInIframeTs.getLeft();
-				double rightGopLength = cutOutIframeTs.getRight() - cutOutIframeTs.getLeft();
-				double leftOffset = 0.07 * leftGopLength;
-				double rightOffset = 0.07 * rightGopLength;
-
-				String middlePath = HttpUtils.buildURL(basepath, CHUNKS_DIR, c.getSortId() + "-middle.ts");
-				CompletableFuture<Void> middleFuture = null;
-				if (keyframes.size() == 4) {
-					middleFuture = CompletableFuture
-							.runAsync(() -> Mp4Utils.extractKeyFramedSegment(cutInIframeTs.getRight(),
-									cutOutIframeTs.getLeft(), url, middlePath, leftOffset), videoExecutor);
-				}
-
-				final String leftPath = HttpUtils.buildURL(basepath, CHUNKS_DIR, c.getSortId() + "-left-full.ts");
-				final String rightPath = HttpUtils.buildURL(basepath, CHUNKS_DIR, c.getSortId() + "-right-full.ts");
-				try {
-					FileUtils.forceMkdir(new File(HttpUtils.buildURL(basepath, CHUNKS_DIR)));
-				} catch (IOException e) {
-					return new Result(false, "can't make temp chunk dir");
-				}
-
-				CompletableFuture<Void> leftSegment = CompletableFuture
-						.runAsync(() -> Mp4Utils.extractKeyFramedSegment(cutInIframeTs.getLeft(),
-								cutInIframeTs.getRight(), url, leftPath, leftOffset), videoExecutor);
-				CompletableFuture<Void> rightSegment = CompletableFuture
-						.runAsync(() -> Mp4Utils.extractKeyFramedSegment(cutOutIframeTs.getLeft(),
-								cutOutIframeTs.getRight(), url, rightPath, rightOffset), videoExecutor);
-
-				leftSegment.get();
-				rightSegment.get();
-
-				final String leftTrimmedPath = leftPath.replace("-full", "");
-				final String rightTrimmedPath = rightPath.replace("-full", "");
-				double trimLeftIn = in - cutInIframeTs.getLeft();
-				double trimRightIn = 0;
-				double segmentDuration = cutInIframeTs.getRight() - cutInIframeTs.getLeft();
-				double leftDuration = segmentDuration - trimLeftIn;
-				double rightDuration = out - cutOutIframeTs.getLeft();
-
-				CompletableFuture<Void> trimLeft = CompletableFuture.runAsync(() -> Mp4Utils.trimReencodeSegment(c,
-						trimLeftIn, leftDuration, leftPath, leftTrimmedPath, KeyframeSide.LEFT));
-				CompletableFuture<Void> trimRight = CompletableFuture.runAsync(() -> Mp4Utils.trimReencodeSegment(c,
-						trimRightIn, rightDuration, rightPath, rightTrimmedPath, KeyframeSide.RIGHT));
-
-				trimRight.get();
-				trimLeft.get();
-
-				List<String> chunksToConcat = new ArrayList<>();
+			if (leftChunkResult.get()) {
 				chunksToConcat.add(leftTrimmedPath);
-
-				if (middleFuture != null && !cutInIframeTs.getRight().equals(cutOutIframeTs.getLeft())
-						&& keyframes.size() == 4) {
-					middleFuture.get();
-					chunksToConcat.add(middlePath);
-				}
+			}
+			if (middleChunkResult.get()) {
+				chunksToConcat.add(middlePath);
+			}
+			if (rightChunkResult.get()) {
 				chunksToConcat.add(rightTrimmedPath);
-
-				return Mp4Utils.concatProtocol(chunksToConcat, basepath + "/" + c.getSortId() + ".mp4");
-			} catch (InterruptedException e) {
+			}
+			return Mp4Utils.concatProtocol(chunksToConcat, basepath + "/" + c.getSortId() + ".mp4");
+			} catch(ExecutionException e) {
+				return new Result(false, e.getMessage());
+			} catch(InterruptedException e) {
 				Thread.currentThread().interrupt();
 				return new Result(false, e.getMessage());
-			} catch (ExecutionException e) {
-				return new Result(false, e.getMessage());
 			}
+
 		}).collect(Collectors.toList());
 
 		Optional<Result> failed = clipRenderResults.stream().filter(res -> !res.isSuccess()).findFirst();
