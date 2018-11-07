@@ -1,5 +1,6 @@
 package com.cloud.video.editor.model;
 
+import java.util.HashSet;
 import java.util.Set;
 
 import javax.persistence.CascadeType;
@@ -7,9 +8,14 @@ import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
-import javax.persistence.OneToMany;
+import javax.persistence.JoinTable;
+import javax.persistence.ManyToMany;
 
-import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 @Entity
 public class User {
@@ -23,52 +29,66 @@ public class User {
 	private String profile;
 	private String email;
 	
-	@OneToMany(cascade = {CascadeType.ALL}, mappedBy = "user")
-	@JsonManagedReference
-	private Set<Compilation> compilations;
-	
+	@ManyToMany(cascade = {CascadeType.ALL})
+	@JoinTable
+	@JsonIgnore
+	private Set<Compilation> compilations = new HashSet<>();
+
+	public Integer getId() {
+		return id;
+	}
+
+	public void setId(Integer id) {
+		this.id = id;
+	}
+
 	public String getName() {
 		return name;
 	}
+
 	public void setName(String name) {
 		this.name = name;
+	}
+
+	public String getGender() {
+		return gender;
+	}
+
+	public void setGender(String gender) {
+		this.gender = gender;
+	}
+
+	public String getPicture() {
+		return picture;
+	}
+
+	public void setPicture(String picture) {
+		this.picture = picture;
+	}
+
+	public String getProfile() {
+		return profile;
+	}
+
+	public void setProfile(String profile) {
+		this.profile = profile;
 	}
 
 	public String getEmail() {
 		return email;
 	}
+
 	public void setEmail(String email) {
 		this.email = email;
 	}
-	public String getGender() {
-		return gender;
-	}
-	public void setGender(String gender) {
-		this.gender = gender;
-	}
-	public String getPicture() {
-		return picture;
-	}
-	public void setPicture(String picture) {
-		this.picture = picture;
-	}
-	public String getProfile() {
-		return profile;
-	}
-	public void setProfile(String profile) {
-		this.profile = profile;
-	}
-	public Integer getUserId() {
-		return id;
-	}
-	public void setUserId(Integer userId) {
-		this.id = userId;
-	}
+
 	public Set<Compilation> getCompilations() {
 		return compilations;
 	}
+
 	public void setCompilations(Set<Compilation> compilations) {
 		this.compilations = compilations;
 	}
+	
 	
 }
