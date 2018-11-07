@@ -12,14 +12,11 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @EqualsAndHashCode
 public class VideoPojo {
-	private Integer id;
 	private String videoId;
 	private String name;
 	private String extension;
 	private String path;
 	private String thumbnailLink;
-	private String directContentLink;
-	private String webContentLink;
 	private int width;
 	private int height;
 	protected long duration;
@@ -43,5 +40,4 @@ public class VideoPojo {
 	private String profile;
 	private String level;
 	private String pixFormat;
-	private Compilation compilation;
 }
