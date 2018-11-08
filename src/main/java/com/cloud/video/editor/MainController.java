@@ -1,28 +1,15 @@
 package com.cloud.video.editor;
 
-import java.io.File;
 import java.io.IOException;
 import java.security.Principal;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Date;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
+import java.util.logging.Level;
 
 import javax.servlet.Filter;
 
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.security.oauth2.resource.ResourceServerProperties;
@@ -53,15 +40,11 @@ import com.cloud.video.editor.model.Compilation;
 import com.cloud.video.editor.model.CompilationRepository;
 import com.cloud.video.editor.model.CompilationRequest;
 import com.cloud.video.editor.model.CompilationsRequest;
-import com.cloud.video.editor.model.KeyframeSide;
 import com.cloud.video.editor.model.Result;
 import com.cloud.video.editor.model.ShareCompilationRequest;
 import com.cloud.video.editor.model.User;
 import com.cloud.video.editor.model.UserRepository;
 import com.cloud.video.editor.model.Video;
-import com.cloud.video.editor.utils.HttpUtils;
-import com.cloud.video.editor.utils.Mp4Utils;
-import com.cloud.video.editor.utils.StringUtils;
 
 import lombok.extern.java.Log;
 
@@ -85,12 +68,11 @@ public class MainController extends WebSecurityConfigurerAdapter {
 	private DropboxLogic dropboxLogic = new DropboxLogic(
 			"S00tGBw3cCkAAAAAAAAM6N6UvdHcsqGjkfI1jYGpeUS_ngU9XdFssa70QgK71aqw");
 
-	private Executor videoExecutor = Executors.newFixedThreadPool(128);
-
-	private static final String CHUNKS_DIR = "chunks";
+	private VideoLogic videoLogic = VideoLogic.getInstance();
 
 	@Bean
-	public FilterRegistrationBean oauth2ClientFilterRegistration(OAuth2ClientContextFilter filter) {
+	public FilterRegistrationBean oauth2ClientFilterRegistration(
+			OAuth2ClientContextFilter filter) {
 		FilterRegistrationBean registration = new FilterRegistrationBean();
 		registration.setFilter(filter);
 		registration.setOrder(-100);
@@ -112,10 +94,11 @@ public class MainController extends WebSecurityConfigurerAdapter {
 	private Filter ssoFilter() {
 		OAuth2ClientAuthenticationProcessingFilter googleFilter = new OAuth2ClientAuthenticationProcessingFilter(
 				"/login/google");
-		OAuth2RestTemplate googleTemplate = new OAuth2RestTemplate(google(), oauth2ClientContext);
+		OAuth2RestTemplate googleTemplate = new OAuth2RestTemplate(google(),
+				oauth2ClientContext);
 		googleFilter.setRestTemplate(googleTemplate);
-		UserInfoTokenServices tokenServices = new UserInfoTokenServices(googleResource().getUserInfoUri(),
-				google().getClientId());
+		UserInfoTokenServices tokenServices = new UserInfoTokenServices(
+				googleResource().getUserInfoUri(), google().getClientId());
 		tokenServices.setRestTemplate(googleTemplate);
 		googleFilter.setTokenServices(tokenServices);
 
@@ -221,112 +204,21 @@ public class MainController extends WebSecurityConfigurerAdapter {
 			return saveRes;
 		}
 
-		final String basepath = "/var/www/html/out/" + StringUtils.getRandomId();
-
-		try {
-			FileUtils.forceMkdir(new File(basepath));
-			FileUtils.forceMkdir(new File(HttpUtils.buildURL(basepath, CHUNKS_DIR)));
-		} catch (IOException e) {
-			return new Result(false, "can't create video basedir");
-		}
-		
 		final Set<Video> clips = compilationReq.getVideos();
-		List<Result> clipRenderResults = clips.parallelStream().map(c -> {
-
-			final String url = c.getDirectContentLink();
-			final double in = c.cutInSeconds();
-			final double out = c.cutOutSeconds();
-
-			final String leftPath = HttpUtils.buildURL(basepath, CHUNKS_DIR, c.getSortId() + "-left-full.ts");
-			final String rightPath = HttpUtils.buildURL(basepath, CHUNKS_DIR, c.getSortId() + "-right-full.ts");
-			final String leftTrimmedPath = leftPath.replace("-full", "");
-			final String rightTrimmedPath = rightPath.replace("-full", "");
-			final String middlePath = HttpUtils.buildURL(basepath, CHUNKS_DIR, c.getSortId() + "-middle.ts");
-
-			final CompletionStage<Double> inLeftFuture = Mp4Utils.getLeftKeyframe(in, url);
-			final CompletionStage<Double> inRightFuture = Mp4Utils.getRightKeyframe(in, url);
-			final CompletionStage<Double> outLeftFuture = Mp4Utils.getLeftKeyframe(out, url);
-			final CompletionStage<Double> outRightFuture = Mp4Utils.getRightKeyframe(out, url);
-
-			final CompletableFuture<Boolean> leftChunkResult = inLeftFuture
-					.thenCombine(inRightFuture, (leftKeyframe, rightKeyframe) -> {
-						Mp4Utils.extractKeyFramedSegment(leftKeyframe, (Double) rightKeyframe, url, leftPath, 0.15);
-
-						final double trimLeftIn = in - leftKeyframe;
-						final double segmentDuration = (Double) rightKeyframe - leftKeyframe;
-						final double leftDuration = segmentDuration - trimLeftIn;
-
-						return Mp4Utils.trimReencodeSegment(c, trimLeftIn, leftDuration, leftPath, leftTrimmedPath,
-								KeyframeSide.LEFT);
-					}).toCompletableFuture();
-
-			final CompletableFuture<Boolean> rightChunkResult = outLeftFuture
-					.thenCombine(outRightFuture, (leftKeyframe, rightKeyframe) -> {
-						Mp4Utils.extractKeyFramedSegment(leftKeyframe, (Double) rightKeyframe, url, rightPath, 0.15);
-
-						final double trimRightIn = 0;
-						final double rightDuration = out - leftKeyframe;
-
-						return Mp4Utils.trimReencodeSegment(c, trimRightIn, rightDuration, rightPath, rightTrimmedPath,
-								KeyframeSide.RIGHT);
-					}).toCompletableFuture();
-
-			final CompletableFuture<Boolean> middleChunkResult = inRightFuture
-					.thenCombine(outLeftFuture, (leftKeyframe, rightKeyframe) -> {
-						if (leftKeyframe == (double) rightKeyframe) {
-							return false;
-						}
-
-						final double gopLength = (Double) rightKeyframe - leftKeyframe;
-						final double leftOffset = 0.07 * gopLength;
-
-						return Mp4Utils.extractKeyFramedSegment(leftKeyframe, (Double) rightKeyframe, url, middlePath,
-								leftOffset);
-					}).toCompletableFuture();
-
-			final List<String> chunksToConcat = new ArrayList<>();
-			try {
-			if (leftChunkResult.get()) {
-				chunksToConcat.add(leftTrimmedPath);
-			}
-			if (middleChunkResult.get()) {
-				chunksToConcat.add(middlePath);
-			}
-			if (rightChunkResult.get()) {
-				chunksToConcat.add(rightTrimmedPath);
-			}
-			return Mp4Utils.concatProtocol(chunksToConcat, basepath + "/" + c.getSortId() + ".mp4");
-			} catch(ExecutionException e) {
-				return new Result(false, e.getMessage());
-			} catch(InterruptedException e) {
-				Thread.currentThread().interrupt();
-				return new Result(false, e.getMessage());
-			}
-
-		}).collect(Collectors.toList());
-
-		Optional<Result> failed = clipRenderResults.stream().filter(res -> !res.isSuccess()).findFirst();
-
-		if (failed.isPresent()) {
-			return new Result(false, "one of the clip renders failed, " + failed.get().getMsg());
+		try {
+			return videoLogic.trimVideo(clips);
+		} catch (IOException e) {
+			log.log(Level.SEVERE, e.getMessage(), e);
+			return new Result(false, "can't create video basedirs");
 		}
-
-		if (clips.size() == 1) {
-			return clipRenderResults.get(0);
-		}
-
-		List<String> chunkPaths = IntStream.range(0, clips.size())
-				.mapToObj(n -> HttpUtils.buildURL(basepath, n + ".mp4")).collect(Collectors.toList());
-
-		log.info("chunk paths: " + chunkPaths);
-		String mp4Out = basepath + "/out.mp4";
-		return Mp4Utils.fileConcat(chunkPaths, mp4Out);
 	}
 
 	@Override
 	protected void configure(HttpSecurity http) throws Exception {
-		http.antMatcher("/**").authorizeRequests().antMatchers("/", "/login**", "/logout**", "/webjars/**").permitAll()
-				.anyRequest().authenticated().and().logout().logoutSuccessUrl("/").permitAll().and().csrf()
+		http.antMatcher("/**").authorizeRequests()
+				.antMatchers("/", "/login**", "/logout**", "/webjars/**").permitAll()
+				.anyRequest().authenticated().and().logout().logoutSuccessUrl("/").permitAll()
+				.and().csrf()
 				.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()).and()
 				.addFilterBefore(ssoFilter(), BasicAuthenticationFilter.class);
 	}

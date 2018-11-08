@@ -41,7 +41,7 @@ import lombok.extern.java.Log;
 @Log
 public class DropboxLogic {
 
-	DbxClientV2 client;
+	private DbxClientV2 client;
 
 	public DropboxLogic(String accessToken) {
 		DbxRequestConfig config = DbxRequestConfig.newBuilder("video-manager/0.1").build();
