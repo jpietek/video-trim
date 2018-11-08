@@ -36,14 +36,14 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.cloud.video.editor.db.CompilationRepository;
+import com.cloud.video.editor.db.UserRepository;
 import com.cloud.video.editor.model.Compilation;
-import com.cloud.video.editor.model.CompilationRepository;
 import com.cloud.video.editor.model.CompilationRequest;
 import com.cloud.video.editor.model.CompilationsRequest;
 import com.cloud.video.editor.model.Result;
 import com.cloud.video.editor.model.ShareCompilationRequest;
 import com.cloud.video.editor.model.User;
-import com.cloud.video.editor.model.UserRepository;
 import com.cloud.video.editor.model.Video;
 
 import lombok.extern.java.Log;
@@ -194,7 +194,6 @@ public class MainController extends WebSecurityConfigurerAdapter {
 
 		compilationRepository.save(c);
 		return new Result(true, "compilation saved");
-
 	}
 
 	@RequestMapping("/render")
