@@ -39,15 +39,16 @@ import com.dropbox.core.v2.users.FullAccount;
 import lombok.extern.java.Log;
 
 @Log
-public class DropboxLogic {
+public class DropboxVideoSource implements CloudVideoSource {
 
 	DbxClientV2 client;
 
-	public DropboxLogic(String accessToken) {
+	public DropboxVideoSource(String accessToken) {
 		DbxRequestConfig config = DbxRequestConfig.newBuilder("video-manager/0.1").build();
 		client = new DbxClientV2(config, accessToken);
 	}
 
+	@Override
 	public Result getDirectLink(Video vf) {
 		try {
 			GetTemporaryLinkResult res = client.files().getTemporaryLink(vf.getPath());
@@ -122,7 +123,7 @@ public class DropboxLogic {
 		return false;
 	}
 
-	public void saveThumbnail(String id, String path, String size) {
+	private void saveThumbnail(String id, String path, String size) {
 		log.info("got thumb size: " + size);
 		String outPath = "/var/www/html/thumbs/" + id.replaceAll("id:", "") + "-" + size
 				+ ".jpg";
@@ -150,7 +151,8 @@ public class DropboxLogic {
 		}
 	}
 
-	public List<Video> listVideos(String thumbSize) {
+	@Override
+	public List<Video> getVideos(String thumbSize) {
 		List<Video> videos = new ArrayList<>();
 		try {
 			FullAccount account = client.users().getCurrentAccount();

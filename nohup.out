@@ -1167,3 +1167,4 @@ got link: https://drive.google.com/uc?id=0B-jz8_oRnrViQVpsT05xZE5mQk0&export=dow
 exec cmd: /bin/bash /home/jp/sbin/get_drive_url https://drive.google.com/uc?id=0B-jz8_oRnrViQVpsT05xZE5mQk0&export=downloadgot url: Optional[https://doc-04-c0-docs.googleusercontent.com/docs/securesc/ha0ro937gcuc7l7deffksulhg5h7mbp1/lqg7l58q4j2586ii1ga8r4dpai95u3ml/1500242400000/07104269842348929127/*/0B-jz8_oRnrViQVpsT05xZE5mQk0?e=download]
 got link: https://drive.google.com/uc?id=0B-jz8_oRnrViQVpsT05xZE5mQk0&export=download
 exec cmd: /bin/bash /home/jp/sbin/get_drive_url https://drive.google.com/uc?id=0B-jz8_oRnrViQVpsT05xZE5mQk0&export=downloadgot url: Optional[https://doc-04-c0-docs.googleusercontent.com/docs/securesc/ha0ro937gcuc7l7deffksulhg5h7mbp1/lqg7l58q4j2586ii1ga8r4dpai95u3ml/1500242400000/07104269842348929127/*/0B-jz8_oRnrViQVpsT05xZE5mQk0?e=download]
+Error: Unable to access jarfile demo-0.0.1-SNAPSHOT.jar

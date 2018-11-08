@@ -11,6 +11,7 @@ import java.util.stream.Stream;
 
 import org.springframework.security.oauth2.client.OAuth2ClientContext;
 
+import com.cloud.video.editor.model.Result;
 import com.cloud.video.editor.model.Video;
 import com.cloud.video.editor.utils.SysUtils;
 import com.google.api.client.auth.oauth2.Credential;
@@ -26,7 +27,7 @@ import com.google.api.services.drive.model.FileList;
 import lombok.extern.java.Log;
 
 @Log
-public class GoogleLogic {
+public class GoogleLogic implements CloudVideoSource {
 
 	private static HttpTransport httpTransport;
 
@@ -56,23 +57,27 @@ public class GoogleLogic {
 		return credential;
 	}
 
-	public Drive getDriveService() {
+	private Drive getDriveService() {
 		Credential credential = authorize();
 		return new Drive.Builder(httpTransport, JSON_FACTORY, credential)
 				.setApplicationName(APPLICATION_NAME).build();
 	}
 
-	public void getDirectLink(Video vf) {
+	@Override
+	public Result getDirectLink(Video vf) {
 		Stream<String> out = SysUtils.getResultStream(
 				"/bin/bash /home/jp/sbin/get_drive_url " + vf.getWebContentLink());
 		Optional<String> url = out.filter(line -> line.contains("googleusercontent"))
 				.findFirst();
 		if (url.isPresent()) {
 			vf.setDirectContentLink(url.get());
+			return new Result(true, "link fetched ok");
 		}
+		return new Result(false, "link fetch failed");
 	}
 
-	public List<Video> listFiles() {
+	@Override
+	public List<Video> getVideos(String thumbSize) {
 		try {
 			Drive service = getDriveService();
 			FileList result = service.files().list().setQ("mimeType='video/mp4'")
