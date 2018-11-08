@@ -12,10 +12,6 @@ import javax.persistence.ManyToOne;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.NoArgsConstructor;
-
 @Entity
 public class Video {
 
@@ -33,7 +29,7 @@ public class Video {
 	@JoinColumn
 	@JsonBackReference
 	private Compilation compilation;
-	
+
 	private String videoId;
 	private String name;
 	private String extension;
@@ -62,7 +58,7 @@ public class Video {
 	private String profile;
 	private String level;
 	private String pixFormat;
-	
+
 	public double cutInSeconds() {
 		return this.cutIn * this.duration / 1000;
 	}
@@ -334,6 +330,5 @@ public class Video {
 	public void setPixFormat(String pixFormat) {
 		this.pixFormat = pixFormat;
 	}
-	
-	
+
 }
