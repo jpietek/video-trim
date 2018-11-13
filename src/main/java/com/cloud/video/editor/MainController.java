@@ -6,7 +6,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.logging.Level;
 
 import javax.servlet.Filter;
 
@@ -65,8 +64,8 @@ public class MainController extends WebSecurityConfigurerAdapter {
 
 	private GoogleLogic googleLogic = new GoogleLogic(oauth2ClientContext);
 
-	private DropboxLogic dropboxLogic = new DropboxLogic(
-			"S00tGBw3cCkAAAAAAAAM6N6UvdHcsqGjkfI1jYGpeUS_ngU9XdFssa70QgK71aqw");
+	private DropboxVideoSource dropboxLogic = new DropboxVideoSource(
+			System.getenv("DROPBOX_TOKEN"));
 
 	private VideoLogic videoLogic = VideoLogic.getInstance();
 
@@ -153,12 +152,12 @@ public class MainController extends WebSecurityConfigurerAdapter {
 
 	@PostMapping("/google/list")
 	public List<Video> listGoogle() {
-		return googleLogic.listFiles();
+		return googleLogic.getVideos(null);
 	}
 
 	@GetMapping(value = "/dropbox/list/thumbsize/{size}")
 	public List<Video> listDropbox(@PathVariable("size") String size) {
-		return dropboxLogic.listVideos(size);
+		return dropboxLogic.getVideos(size);
 	}
 
 	@PostMapping(value = "/google/getDirectLink")
@@ -207,8 +206,7 @@ public class MainController extends WebSecurityConfigurerAdapter {
 		try {
 			return videoLogic.trimVideo(clips);
 		} catch (IOException e) {
-			log.log(Level.SEVERE, e.getMessage(), e);
-			return new Result(false, "can't create video basedirs");
+			return new Result(false, "failed to create basepath for videos");
 		}
 	}
 

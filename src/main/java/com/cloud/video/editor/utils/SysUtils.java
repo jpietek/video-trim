@@ -4,8 +4,12 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.ProcessBuilder.Redirect;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.stream.Stream;
+
+import com.zaxxer.nuprocess.NuProcess;
+import com.zaxxer.nuprocess.NuProcessBuilder;
 
 import lombok.extern.java.Log;
 
@@ -35,15 +39,11 @@ public class SysUtils {
 
 	public static boolean getExitCode(String cmd) {
 		log.info("exec cmd: " + cmd);
-		ProcessBuilder pb = new ProcessBuilder(cmd.split(" "));
+		NuProcessBuilder pb = new NuProcessBuilder(cmd.split(" "));
 		try {
-			Process p = pb.start();
-			pb.redirectErrorStream(true);
-			pb.redirectOutput(Redirect.PIPE);
-			p.waitFor();
-			return p.exitValue() <= 0;
-		} catch (IOException e) {
-			return false;
+			NuProcess p = pb.start();
+			int exitCode = p.waitFor(30, TimeUnit.SECONDS);
+			return exitCode <= 0;
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			return false;
