@@ -64,12 +64,14 @@ public class MainController extends WebSecurityConfigurerAdapter {
 
 	private GoogleLogic googleLogic = new GoogleLogic(oauth2ClientContext);
 
-	private DropboxVideoSource dropboxLogic = new DropboxVideoSource(System.getenv("DROPBOX_TOKEN"));
+	private DropboxVideoSource dropboxLogic = new DropboxVideoSource(
+			System.getenv("DROPBOX_TOKEN"));
 
 	private VideoLogic videoLogic = VideoLogic.getInstance();
 
 	@Bean
-	public FilterRegistrationBean oauth2ClientFilterRegistration(OAuth2ClientContextFilter filter) {
+	public FilterRegistrationBean oauth2ClientFilterRegistration(
+			OAuth2ClientContextFilter filter) {
 		FilterRegistrationBean registration = new FilterRegistrationBean();
 		registration.setFilter(filter);
 		registration.setOrder(-100);
@@ -91,10 +93,11 @@ public class MainController extends WebSecurityConfigurerAdapter {
 	private Filter ssoFilter() {
 		OAuth2ClientAuthenticationProcessingFilter googleFilter = new OAuth2ClientAuthenticationProcessingFilter(
 				"/login/google");
-		OAuth2RestTemplate googleTemplate = new OAuth2RestTemplate(google(), oauth2ClientContext);
+		OAuth2RestTemplate googleTemplate = new OAuth2RestTemplate(google(),
+				oauth2ClientContext);
 		googleFilter.setRestTemplate(googleTemplate);
-		UserInfoTokenServices tokenServices = new UserInfoTokenServices(googleResource().getUserInfoUri(),
-				google().getClientId());
+		UserInfoTokenServices tokenServices = new UserInfoTokenServices(
+				googleResource().getUserInfoUri(), google().getClientId());
 		tokenServices.setRestTemplate(googleTemplate);
 		googleFilter.setTokenServices(tokenServices);
 
@@ -209,8 +212,10 @@ public class MainController extends WebSecurityConfigurerAdapter {
 
 	@Override
 	protected void configure(HttpSecurity http) throws Exception {
-		http.antMatcher("/**").authorizeRequests().antMatchers("/", "/login**", "/logout**", "/webjars/**").permitAll()
-				.anyRequest().authenticated().and().logout().logoutSuccessUrl("/").permitAll().and().csrf()
+		http.antMatcher("/**").authorizeRequests()
+				.antMatchers("/", "/login**", "/logout**", "/webjars/**").permitAll()
+				.anyRequest().authenticated().and().logout().logoutSuccessUrl("/").permitAll()
+				.and().csrf()
 				.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()).and()
 				.addFilterBefore(ssoFilter(), BasicAuthenticationFilter.class);
 	}
