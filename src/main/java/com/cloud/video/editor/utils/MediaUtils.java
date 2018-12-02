@@ -3,6 +3,7 @@ package com.cloud.video.editor.utils;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
@@ -10,25 +11,21 @@ import java.util.concurrent.Executors;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
 
+import com.cloud.video.editor.model.*;
 import org.apache.commons.io.FileUtils;
 
-import com.cloud.video.editor.model.FFmpegException;
-import com.cloud.video.editor.model.KeyframeSide;
-import com.cloud.video.editor.model.NoKeyFrameException;
-import com.cloud.video.editor.model.Result;
-import com.cloud.video.editor.model.Video;
 import com.google.api.client.util.Charsets;
 
 import lombok.extern.java.Log;
 
 @Log
-public class Mp4Utils {
+public class MediaUtils {
 
 	private static final String FFMPEG_PREFIX = "ffmpeg -i ";
 	private static final String OUT_DIR = "/var/www/html";
 	private static final Executor mp4UtilsExecutor = Executors.newFixedThreadPool(64);
 
-	private Mp4Utils() {
+	private MediaUtils() {
 
 	}
 
@@ -143,24 +140,27 @@ public class Mp4Utils {
 		return new Result(true, "file concat ok", gf);
 	}
 
-	public static CompletionStage<Double> getLeftKeyframe(double seekPoint, String videoPath) {
+	public static CompletionStage<ExtractKeyframeResult> getLeftKeyframe(ExtractKeyframeRequest req) {
 		return CompletableFuture.supplyAsync(() -> {
+			final Video video = req.getVideo();
+			final double seekPoint = req.getSide() == KeyframeSide.LEFT
+					? video.getCutIn() : video.getCutOut();
 			double left = seekPoint;
 			double right;
 
 			if (seekPoint == 0) {
-				return seekPoint;
+				return ExtractKeyframeResult.builder().video(video).time(0.0).build();
 			}
 
 			for (int i = 1; i <= 7; i++) {
 				log.info("left keyframe iter: " + i);
 				right = left;
 				left -= Math.pow(2, i);
-				List<String> keyframes = getKeyframes(left, right, videoPath);
+				List<String> keyframes = getKeyframes(left, right, video.getDirectContentLink());
 				if (!keyframes.isEmpty()) {
 					Double closestKeyframe = getClosestKeyFrame(keyframes, seekPoint, KeyframeSide.LEFT);
 					if (closestKeyframe != null) {
-						return closestKeyframe;
+						return ExtractKeyframeResult.builder().video(video).time(closestKeyframe).build();
 					}
 				}
 			}
@@ -168,19 +168,22 @@ public class Mp4Utils {
 		}, mp4UtilsExecutor);
 	}
 
-	public static CompletionStage<Double> getRightKeyframe(double seekPoint, String videoPath) {
+	public static CompletionStage<ExtractKeyframeResult> getRightKeyframe(ExtractKeyframeRequest req) {
 		return CompletableFuture.supplyAsync(() -> {
+			final Video video = req.getVideo();
+			final double seekPoint = req.getSide() == KeyframeSide.LEFT
+					? video.getCutIn() : video.getCutOut();
 			double left;
 			double right = seekPoint;
 			for (int i = 1; i <= 7; i++) {
 				log.info("right keyframe iter: " + i);
 				left = right;
 				right += Math.pow(2, i);
-				List<String> keyframes = getKeyframes(left, right, videoPath);
+				List<String> keyframes = getKeyframes(left, right, req.getVideo().getDirectContentLink());
 				if (!keyframes.isEmpty()) {
 					Double closestKeyframe = getClosestKeyFrame(keyframes, seekPoint, KeyframeSide.RIGHT);
 					if (closestKeyframe != null) {
-						return closestKeyframe;
+						return ExtractKeyframeResult.builder().video(video).time(closestKeyframe).build();
 					}
 				}
 			}
@@ -219,7 +222,7 @@ public class Mp4Utils {
 		return closest;
 	}
 
-	public static boolean trimReencodeSegment(Video v, double in, double duration, String inputPath, String outputPath,
+	public static Optional<String> trimReencodeSegment(Video v, double in, double duration, String inputPath, String outputPath,
 			KeyframeSide side) {
 		double fps = v.getFps();
 
@@ -237,7 +240,7 @@ public class Mp4Utils {
 				+ v.getVideoBitrate() + " -pix_fmt " + v.getPixFormat() + " -c:a aac -b:a " + v.getAudioBitrate() + " "
 				+ outputPath;
 
-		return SysUtils.getExitCode(cmd);
+		return SysUtils.getExitCode(cmd) ? Optional.of(outputPath) : Optional.empty();
 	}
 
 	public static Result reencodeSingleSegment(String inputPath, double in, double out, String outputPath) {
@@ -256,7 +259,7 @@ public class Mp4Utils {
 		return new Result(true, "file concat ok", gf);
 	}
 
-	public static boolean extractKeyFramedSegment(double in, double out, String inputPath, String outputPath,
+	public static Optional<String> extractKeyFramedSegment(double in, double out, String inputPath, String outputPath,
 			double offset) {
 
 		final double seekIn = in + offset;
@@ -269,6 +272,6 @@ public class Mp4Utils {
 		if (!trimResult) {
 			throw new FFmpegException("extracting keyframed video chunk failed, " + inputPath + " " + in + " " + out);
 		}
-		return true;
+		return Optional.of(outputPath);
 	}
 }

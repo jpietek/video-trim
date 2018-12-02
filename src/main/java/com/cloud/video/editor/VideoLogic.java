@@ -2,26 +2,23 @@ package com.cloud.video.editor;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
-import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
+import com.cloud.video.editor.model.*;
+import com.cloud.video.editor.utils.VideoFunctions;
 import org.apache.commons.io.FileUtils;
 
-import com.cloud.video.editor.model.KeyframeSide;
-import com.cloud.video.editor.model.Result;
-import com.cloud.video.editor.model.Video;
 import com.cloud.video.editor.utils.HttpUtils;
-import com.cloud.video.editor.utils.Mp4Utils;
+import com.cloud.video.editor.utils.MediaUtils;
 import com.cloud.video.editor.utils.StringUtils;
 
 import lombok.extern.java.Log;
@@ -49,91 +46,38 @@ class VideoLogic {
     Result trimVideo(Set<Video> clips) throws IOException {
 
         final String basepath = this.prepareBaseDirs();
+        final String chunksBasepath = HttpUtils.buildURL(basepath, CHUNKS_DIR);
 
         List<Result> clipRenderResults = clips.parallelStream().map(c -> {
+            c.setBasepath(chunksBasepath);
 
-            final String url = c.getDirectContentLink();
-            final double in = c.cutInSeconds();
-            final double out = c.cutOutSeconds();
+            final ExtractKeyframeRequest leftReq
+                    = ExtractKeyframeRequest.builder().side(KeyframeSide.LEFT).video(c).build();
+            final ExtractKeyframeRequest rightReq
+                    = ExtractKeyframeRequest.builder().side(KeyframeSide.RIGHT).video(c).build();
 
-            final String leftPath = HttpUtils.buildURL(basepath, CHUNKS_DIR,
-                    c.getSortId() + "-left-full.ts");
-            final String rightPath = HttpUtils.buildURL(basepath, CHUNKS_DIR,
-                    c.getSortId() + "-right-full.ts");
-            final String leftTrimmedPath = leftPath.replace("-full", "");
-            final String rightTrimmedPath = rightPath.replace("-full", "");
-            final String middlePath = HttpUtils.buildURL(basepath, CHUNKS_DIR,
-                    c.getSortId() + "-middle.ts");
+            final CompletionStage<ExtractKeyframeResult> inLeftFuture = MediaUtils.getLeftKeyframe(leftReq);
+            final CompletionStage<ExtractKeyframeResult> inRightFuture = MediaUtils.getRightKeyframe(leftReq);
+            final CompletionStage<ExtractKeyframeResult> outLeftFuture = MediaUtils.getLeftKeyframe(rightReq);
+            final CompletionStage<ExtractKeyframeResult> outRightFuture = MediaUtils.getRightKeyframe(rightReq);
 
-            final CompletionStage<Double> inLeftFuture = Mp4Utils.getLeftKeyframe(in, url);
-            final CompletionStage<Double> inRightFuture = Mp4Utils.getRightKeyframe(in, url);
-            final CompletionStage<Double> outLeftFuture = Mp4Utils.getLeftKeyframe(out, url);
-            final CompletionStage<Double> outRightFuture = Mp4Utils.getRightKeyframe(out, url);
+            final CompletableFuture<Optional<String>> leftChunkResult = inLeftFuture
+                    .thenCombineAsync(inRightFuture, VideoFunctions.leftTrimmer, VIDEO_EXECUTOR).toCompletableFuture();
 
-            BiFunction<Double, Double, Boolean> leftTrimmer = (leftKeyframe, rightKeyframe) -> {
-                Mp4Utils.extractKeyFramedSegment(leftKeyframe, rightKeyframe,
-                        url, leftPath, 0.15);
+            final CompletableFuture<Optional<String>> rightChunkResult = outLeftFuture
+                    .thenCombineAsync(outRightFuture, VideoFunctions.rightTrimmer, VIDEO_EXECUTOR).toCompletableFuture();
 
-                final double trimLeftIn = in - leftKeyframe;
-                final double segmentDuration = rightKeyframe - leftKeyframe;
-                final double leftDuration = segmentDuration - trimLeftIn;
+            final CompletableFuture<Optional<String>> middleChunkResult = inRightFuture
+                    .thenCombineAsync(outLeftFuture, VideoFunctions.middleTrimmer, VIDEO_EXECUTOR).toCompletableFuture();
 
-                return Mp4Utils.trimReencodeSegment(c, trimLeftIn, leftDuration,
-                        leftPath, leftTrimmedPath, KeyframeSide.LEFT);
-            };
+                final List<String> chunksToConcat
+                        = Stream.of(leftChunkResult, middleChunkResult, rightChunkResult)
+                        .map(CompletableFuture::join)
+                        .filter(Optional::isPresent).map(Optional::get).collect(Collectors.toList());
 
-            BiFunction<Double, Double, Boolean> middleTrimmer = (leftKeyframe, rightKeyframe) -> {
-                if (leftKeyframe == (double) rightKeyframe) {
-                    return false;
-                }
-
-                final double gopLength = rightKeyframe - leftKeyframe;
-                final double leftOffset = 0.07 * gopLength;
-
-                return Mp4Utils.extractKeyFramedSegment(leftKeyframe,
-                        rightKeyframe, url, middlePath, leftOffset);
-            };
-
-            BiFunction<Double, Double, Boolean> rightTrimmer = (leftKeyframe, rightKeyframe) -> {
-                Mp4Utils.extractKeyFramedSegment(leftKeyframe, rightKeyframe,
-                        url, rightPath, 0.15);
-
-                final double trimRightIn = 0;
-                final double rightDuration = out - leftKeyframe;
-
-                return Mp4Utils.trimReencodeSegment(c, trimRightIn, rightDuration,
-                        rightPath, rightTrimmedPath, KeyframeSide.RIGHT);
-            };
-
-            final CompletableFuture<Boolean> leftChunkResult = inLeftFuture
-                    .thenCombineAsync(inRightFuture, leftTrimmer, VIDEO_EXECUTOR).toCompletableFuture();
-
-            final CompletableFuture<Boolean> rightChunkResult = outLeftFuture
-                    .thenCombineAsync(outRightFuture, rightTrimmer, VIDEO_EXECUTOR).toCompletableFuture();
-
-            final CompletableFuture<Boolean> middleChunkResult = inRightFuture
-                    .thenCombineAsync(outLeftFuture, middleTrimmer, VIDEO_EXECUTOR).toCompletableFuture();
-
-            final List<String> chunksToConcat = new ArrayList<>();
-            try {
-                if (leftChunkResult.get()) {
-                    chunksToConcat.add(leftTrimmedPath);
-                }
-                if (middleChunkResult.get()) {
-                    chunksToConcat.add(middlePath);
-                }
-                if (rightChunkResult.get()) {
-                    chunksToConcat.add(rightTrimmedPath);
-                }
-                return Mp4Utils.concatProtocol(chunksToConcat,
-                        basepath + "/" + c.getSortId() + ".mp4");
-            } catch (ExecutionException e) {
-                return new Result(false, e.getMessage());
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return new Result(false, e.getMessage());
-            }
-        }).collect(Collectors.toList());
+                return MediaUtils.concatProtocol(chunksToConcat,
+                        HttpUtils.buildURL(basepath, c.getSortId() + ".mp4"));
+            }).collect(Collectors.toList());
 
         Optional<Result> failed = clipRenderResults.stream().filter(res -> !res.isSuccess())
                 .findFirst();
@@ -148,12 +92,12 @@ class VideoLogic {
         }
 
         List<String> chunkPaths = IntStream.range(0, clips.size())
-                .mapToObj(n -> HttpUtils.buildURL(basepath, n + ".mp4"))
+                .mapToObj(n -> HttpUtils.buildURL(chunksBasepath, n + ".mp4"))
                 .collect(Collectors.toList());
 
         log.info("chunk paths: " + chunkPaths);
-        String mp4Out = basepath + "/out.mp4";
-        return Mp4Utils.fileConcat(chunkPaths, mp4Out);
+        String mp4Out = HttpUtils.buildURL(chunksBasepath, "out.mp4");
+        return MediaUtils.fileConcat(chunkPaths, mp4Out);
     }
 
     static VideoLogic getInstance() {
